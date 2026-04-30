@@ -1,0 +1,30 @@
+{
+  "toyota_camry": {
+    "Category": "Car",
+    "Make": "Toyota",
+    "Model": "Camry",
+    "Price": 28000,
+    "MPG": 30
+  },
+  "honda_civic": {
+    "Category": "Car",
+    "Make": "Honda",
+    "Model": "Civic",
+    "Price": 24000,
+    "MPG": 35
+  },
+  "yamaha_r1": {
+    "Category": "Motorcycle",
+    "Make": "Yamaha",
+    "Model": "R1",
+    "Price": 17000,
+    "MPG": 45
+  },
+  "searay_spx190": {
+    "Category": "Boat",
+    "Make": "Sea Ray",
+    "Model": "SPX 190",
+    "Price": 45000,
+    "MPG": 5
+  }
+}

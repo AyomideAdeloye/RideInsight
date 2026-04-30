@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>My Garage | RideInsight</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<nav class="navbar">
+    <h1 class="logo">RideInsight</h1>
+    <button class="post-btn" onclick="window.location.href='/'">Home</button>
+</nav>
+
+<div class="garage-container">
+    <div class="garage-header">
+        <h2>My Garage</h2>
+        <button class="post-btn" onclick="openGarageModal()">Add Vehicle</button>
+    </div>
+
+    <div id="garage-list" class="garage-list"></div>
+</div>
+
+<div id="garageModal" class="modal">
+    <div class="modal-content">
+        <h2>Add Vehicle</h2>
+
+        <input id="owner" placeholder="Owner username">
+        <input id="year" placeholder="Year">
+        <input id="make" placeholder="Make">
+        <input id="model" placeholder="Model">
+        <input id="trim" placeholder="Trim">
+        <input id="carImage" placeholder="Image URL">
+        <textarea id="notes" placeholder="Notes about your vehicle"></textarea>
+
+        <button onclick="submitCar()">Save Vehicle</button>
+        <button onclick="closeGarageModal()">Cancel</button>
+    </div>
+</div>
+
+<div id="modModal" class="modal">
+    <div class="modal-content">
+        <h2>Add Mod</h2>
+
+        <input id="modName" placeholder="Mod name">
+        <input id="modCost" placeholder="Cost">
+        <input id="modCategory" placeholder="Category">
+
+        <button onclick="submitMod()">Add</button>
+        <button onclick="closeModModal()">Cancel</button>
+    </div>
+</div>
+
+<script src="{{ url_for('static', filename='garage.js') }}"></script>
+</body>
+</html>

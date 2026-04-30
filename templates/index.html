@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>RideInsight</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+    <nav class="navbar">
+        <h1 class="logo">RideInsight</h1>
+        <input type="text" class="search-bar" placeholder="Search cars, builds, mods, reviews...">
+        <button class="post-btn" onclick="openPostModal()">Create Post</button>        
+        <button onclick="loadPosts()">Home</button>
+    </nav>
+
+    <div class="page-layout">
+
+        <aside class="left-sidebar">
+            <h3>Menu</h3>
+            <p>Home</p>
+            <p onclick="window.location.href='/garage'">My Garage</p>
+            <p>Compare Vehicles</p>
+            <p>Marketplace</p>
+            <p>Saved Posts</p>
+        </aside>
+
+        <main class="feed" id="feed">
+            <!-- Posts will load here from JavaScript -->
+        </main>
+
+        <aside class="right-sidebar">
+            <h3>Trending</h3>
+            <p>2024 Mustang GT</p>
+            <p>Mazda 6 Mods</p>
+            <p>Best first project cars</p>
+            <p>Affordable motorcycles</p>
+        </aside>
+
+    </div>
+
+
+
+    <div id="postModal" class="modal">
+        <div class="modal-content">
+            <h2>Create Post</h2>
+
+            <input id="username" placeholder="Username">
+            <input id="car" placeholder="Your Car (e.g. 2018 Mazda 6 Touring)">
+            <input id="title" placeholder="Post Title">
+            <textarea id="body" placeholder="Write your post..."></textarea>
+            <input id="image" placeholder="Image URL (paste link)">
+
+            <button onclick="submitPost()">Post</button>
+            <button onclick="closePostModal()">Cancel</button>
+        </div>
+    </div>
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
