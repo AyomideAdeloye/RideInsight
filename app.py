@@ -51,6 +51,15 @@ def init_db():
         )
     """)
 
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS comments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            post_id INTEGER,
+            username TEXT,
+            body TEXT
+        )
+    """)
+
     existing_posts = conn.execute("SELECT COUNT(*) FROM posts").fetchone()[0]
 
     if existing_posts == 0:
@@ -260,6 +269,41 @@ def add_mod():
     conn.close()
 
     return jsonify({"message": "Mod added"})
+
+@app.route("/get_comments/<int:post_id>")
+def get_comments(post_id):
+    conn = get_db_connection()
+
+    comments = conn.execute("""
+        SELECT * FROM comments
+        WHERE post_id = ?
+        ORDER BY id ASC
+    """, (post_id,)).fetchall()
+
+    conn.close()
+
+    return jsonify([dict(comment) for comment in comments])
+
+
+@app.route("/add_comment", methods=["POST"])
+def add_comment():
+    data = request.json
+
+    conn = get_db_connection()
+
+    conn.execute("""
+        INSERT INTO comments (post_id, username, body)
+        VALUES (?, ?, ?)
+    """, (
+        data["post_id"],
+        data["username"],
+        data["body"]
+    ))
+
+    conn.commit()
+    conn.close()
+
+    return jsonify({"message": "Comment added"})
 
 if __name__ == "__main__":
     init_db()

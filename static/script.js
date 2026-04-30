@@ -19,10 +19,18 @@ function createPostCard(post) {
         <div class="post-actions">
             <button onclick="likePost(${post.id})" id="like-btn-${post.id}">
             ▲ ${post.likes}</button>
-            <button>Comment</button>
+            <button onclick="toggleComments(${post.id})">Comment</button>
             <button>Save</button>
             <button>Share</button>
         </div>
+        <div id="comments-${post.id}" class="comments-section" style="display: none;">
+            <div id="comments-list-${post.id}"></div>
+
+            <input id="comment-user-${post.id}" placeholder="Username">
+            <input id="comment-body-${post.id}" placeholder="Write a comment...">
+            <button onclick="submitComment(${post.id})">Post Comment</button>
+        </div>
+        
     `;
 
     return postCard;
@@ -55,6 +63,57 @@ async function likePost(postId) {
     localStorage.setItem("likedPosts", JSON.stringify(likedPosts));
 
     loadPosts();
+}
+
+async function toggleComments(postId) {
+    const section = document.getElementById(`comments-${postId}`);
+
+    if (section.style.display === "none") {
+        section.style.display = "block";
+        await loadComments(postId);
+    } else {
+        section.style.display = "none";
+    }
+}
+
+async function loadComments(postId) {
+    const response = await fetch(`/get_comments/${postId}`);
+    const comments = await response.json();
+
+    const commentsList = document.getElementById(`comments-list-${postId}`);
+    commentsList.innerHTML = "";
+
+    comments.forEach(comment => {
+        const div = document.createElement("div");
+        div.classList.add("comment");
+
+        div.innerHTML = `
+            <p><strong>@${comment.username}</strong></p>
+            <p>${comment.body}</p>
+        `;
+
+        commentsList.appendChild(div);
+    });
+}
+
+async function submitComment(postId) {
+    const username = document.getElementById(`comment-user-${postId}`).value;
+    const body = document.getElementById(`comment-body-${postId}`).value;
+
+    await fetch("/add_comment", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+            post_id: postId,
+            username,
+            body
+        })
+    });
+
+    document.getElementById(`comment-body-${postId}`).value = "";
+    loadComments(postId);
 }
 
 async function loadPosts() {

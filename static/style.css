@@ -205,3 +205,24 @@ body {
     font-weight: bold;
     color: #1f4ed8;
 }
+
+.comments-section {
+    margin-top: 15px;
+    border-top: 1px solid #ddd;
+    padding-top: 15px;
+}
+
+.comments-section input {
+    width: 100%;
+    padding: 10px;
+    margin-top: 8px;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+}
+
+.comment {
+    background: #f0f2f5;
+    padding: 10px;
+    border-radius: 8px;
+    margin-bottom: 8px;
+}
