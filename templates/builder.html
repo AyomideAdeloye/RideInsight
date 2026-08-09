@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="builder-page">
+
+    <div class="builder-header">
+        <div>
+            <h2>Build Custom Vehicle</h2>
+            <p class="builder-subtitle">Configure your dream build with live 3D preview</p>
+        </div>
+        <div class="builder-header-actions">
+            <input id="buildName" class="build-name-input" placeholder="Name your build…">
+            <button class="btn btn-primary" onclick="saveBuild()">💾 Save Build</button>
+            <button class="btn btn-ghost" onclick="clearBuild()">🗑 Clear</button>
+        </div>
+    </div>
+
+    <div class="builder-layout">
+
+        <!-- LEFT: 3D Viewer + 2.5D silhouette -->
+        <div class="builder-visual-panel">
+
+            <!-- 3D Rotating Car -->
+            <div class="viewer-3d-wrap">
+                <div class="viewer-3d-label">3D Preview</div>
+                <canvas id="carCanvas"></canvas>
+                <div class="viewer-controls">
+                    <button class="viewer-ctrl-btn" onclick="rotateLeft()"><i data-lucide="chevron-left"></i></button>
+                    <button class="viewer-ctrl-btn" id="autoRotateBtn" onclick="toggleAutoRotate()">⏸ Auto</button>
+                    <button class="viewer-ctrl-btn" onclick="rotateRight()"><i data-lucide="chevron-right"></i></button>
+                </div>
+                <!-- Color picker -->
+                <div class="color-picker-row">
+                    <span class="color-label">Paint:</span>
+                    <div class="color-swatches" id="colorSwatches"></div>
+                    <input type="color" id="customColor" title="Custom color" onchange="setCarColor(this.value)">
+                </div>
+            </div>
+
+            <!-- 2.5D Silhouette -->
+            <div class="silhouette-wrap">
+                <div class="viewer-3d-label">Part Highlights</div>
+                <div class="silhouette-container">
+                    <svg id="carSilhouette" viewBox="0 0 800 320" xmlns="http://www.w3.org/2000/svg"></svg>
+                    <div id="silhouetteTooltip" class="sil-tooltip" style="display:none;"></div>
+                </div>
+                <div class="sil-legend" id="silLegend"></div>
+            </div>
+
+            <!-- Build Summary -->
+            <div class="build-summary" id="buildSummary">
+                <div class="summary-header">
+                    <h3>Build Summary</h3>
+                    <span id="partCount" class="part-count">0 parts</span>
+                </div>
+                <div id="summaryList" class="summary-list"></div>
+                <div class="summary-totals">
+                    <div class="summary-row"><span>Base Vehicle</span><span id="summaryBase">$0</span></div>
+                    <div class="summary-row"><span>Total Mods</span><span id="summaryMods">$0</span></div>
+                    <div class="summary-row total-row"><span>Grand Total</span><span id="summaryTotal">$0</span></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- RIGHT: Parts Panel -->
+        <div class="builder-parts-panel">
+
+            <!-- Base Vehicle -->
+            <div class="builder-section">
+                <div class="builder-section-header" onclick="toggleSection('base')">
+                    <span><i data-lucide="car"></i> Base Vehicle</span>
+                    <span class="section-toggle" id="toggle-base"><i data-lucide="chevron-down"></i></span>
+                </div>
+                <div class="builder-section-body" id="body-base">
+                    <div class="base-vehicle-dropdowns">
+                        <div class="bv-row">
+                            <label>Year</label>
+                            <select id="baseYear" onchange="onYearChange()">
+                                <option value="">— Year —</option>
+                            </select>
+                        </div>
+                        <div class="bv-row">
+                            <label>Make</label>
+                            <select id="baseMake" onchange="onMakeChange()" disabled>
+                                <option value="">— Select year first —</option>
+                            </select>
+                        </div>
+                        <div class="bv-row">
+                            <label>Model</label>
+                            <select id="baseModel" onchange="onModelChange()" disabled>
+                                <option value="">— Select make first —</option>
+                            </select>
+                        </div>
+                        <div class="bv-row">
+                            <label>Trim</label>
+                            <select id="baseTrim" onchange="onTrimChange()" disabled>
+                                <option value="">— Select model first —</option>
+                            </select>
+                        </div>
+                        <div class="bv-row bv-price-row">
+                            <label>Est. Base Price</label>
+                            <div class="bv-price-display" id="basePriceDisplay">Select a vehicle above</div>
+                            <input type="hidden" id="basePrice" value="0">
+                        </div>
+                    </div>
+                    <div id="baseVehicleDisplay" style="display:none;"></div>
+
+                    <div id="generate3dWrap" style="display:none;margin-top:12px;">
+                        <button class="btn btn-generate3d" id="generate3dBtn" onclick="trigger3DGeneration()">
+                            <i data-lucide="sparkles"></i> Generate 3D Model
+                        </button>
+                        <div id="generate3dStatus" class="generate3d-status" style="display:none;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Category sections injected by JS -->
+            <div id="categorySections"></div>
+
+        </div>
+    </div>
+
+    <!-- Saved Builds -->
+    <div class="builder-section" style="margin-top:24px;">
+        <div class="builder-section-header" onclick="toggleSection('savedBuilds')">
+            <span>📋 My Saved Builds</span>
+            <span class="section-toggle" id="toggle-savedBuilds"><i data-lucide="chevron-down"></i></span>
+        </div>
+        <div class="builder-section-body" id="body-savedBuilds">
+            <div id="savedBuilds"><p class="empty-state" style="padding:8px 0;">No saved builds yet.</p></div>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="{{ url_for('static', filename='builder.js') }}"></script>
+{% endblock %}
