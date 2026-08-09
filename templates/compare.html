@@ -1,0 +1,191 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="compare-page">
+    <h2>Compare Vehicles</h2>
+
+    <!-- Row 1: Vehicle Type + Priority + Compare button -->
+    <div class="compare-row compare-row-type">
+        <div class="compare-field">
+            <label>Vehicle Type</label>
+            <select id="vehicleType" onchange="onTypeChange()">
+                <option value="car">🚗 Car</option>
+                <option value="motorcycle">🏍️ Motorcycle</option>
+                <option value="boat">⛵ Boat</option>
+            </select>
+        </div>
+        <div class="compare-field">
+            <label>Priority</label>
+            <select id="intent">
+                <option value="daily">Daily / Recreational</option>
+                <option value="performance">Performance</option>
+                <option value="budget">Budget</option>
+                <option value="comfort">Comfort / Touring</option>
+            </select>
+        </div>
+        <div class="compare-field compare-field-btn">
+            <button class="compare-btn" onclick="compareCars()">Compare →</button>
+        </div>
+    </div>
+
+    <!-- Row 2: Vehicle 1 -->
+    <div class="compare-row compare-row-vehicle" id="vehicle1Row">
+        <div class="compare-vehicle-label">Vehicle 1</div>
+
+        <!-- Car dropdowns -->
+        <div class="compare-dropdowns" id="v1-car-dropdowns">
+            <div class="compare-field">
+                <label>Year</label>
+                <select id="v1year" onchange="onV1YearChange()">
+                    <option value="">— Year —</option>
+                </select>
+            </div>
+            <div class="compare-field">
+                <label>Make</label>
+                <select id="v1make" onchange="onV1MakeChange()" disabled>
+                    <option value="">— Make —</option>
+                </select>
+            </div>
+            <div class="compare-field">
+                <label>Model</label>
+                <select id="v1model" onchange="onV1ModelChange()" disabled>
+                    <option value="">— Model —</option>
+                </select>
+            </div>
+            <div class="compare-field">
+                <label>Trim</label>
+                <select id="v1trim" disabled>
+                    <option value="">— Trim —</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Motorcycle dropdowns -->
+        <div class="compare-dropdowns" id="v1-moto-dropdowns" style="display:none;">
+            <div class="compare-field">
+                <label>Year</label>
+                <select id="v1moto-year" onchange="onMotoYearChange(1)">
+                    <option value="">— Year —</option>
+                </select>
+            </div>
+            <div class="compare-field">
+                <label>Make</label>
+                <select id="v1moto-make" onchange="onMotoMakeChange(1)" disabled>
+                    <option value="">— Make —</option>
+                </select>
+            </div>
+            <div class="compare-field">
+                <label>Model</label>
+                <select id="v1moto-model" disabled>
+                    <option value="">— Model —</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Boat dropdowns -->
+        <div class="compare-dropdowns" id="v1-boat-dropdowns" style="display:none;">
+            <div class="compare-field">
+                <label>Year</label>
+                <select id="v1boat-year">
+                    <option value="">— Year —</option>
+                </select>
+            </div>
+            <div class="compare-field">
+                <label>Make</label>
+                <select id="v1boat-make" onchange="onBoatMakeChange(1)" disabled>
+                    <option value="">— Make —</option>
+                </select>
+            </div>
+            <div class="compare-field">
+                <label>Model</label>
+                <select id="v1boat-model" disabled>
+                    <option value="">— Model —</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <!-- Row 3: Vehicle 2 -->
+    <div class="compare-row compare-row-vehicle" id="vehicle2Row">
+        <div class="compare-vehicle-label">Vehicle 2</div>
+
+        <!-- Car dropdowns -->
+        <div class="compare-dropdowns" id="v2-car-dropdowns">
+            <div class="compare-field">
+                <label>Year</label>
+                <select id="v2year" onchange="onV2YearChange()">
+                    <option value="">— Year —</option>
+                </select>
+            </div>
+            <div class="compare-field">
+                <label>Make</label>
+                <select id="v2make" onchange="onV2MakeChange()" disabled>
+                    <option value="">— Make —</option>
+                </select>
+            </div>
+            <div class="compare-field">
+                <label>Model</label>
+                <select id="v2model" onchange="onV2ModelChange()" disabled>
+                    <option value="">— Model —</option>
+                </select>
+            </div>
+            <div class="compare-field">
+                <label>Trim</label>
+                <select id="v2trim" disabled>
+                    <option value="">— Trim —</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Motorcycle dropdowns -->
+        <div class="compare-dropdowns" id="v2-moto-dropdowns" style="display:none;">
+            <div class="compare-field">
+                <label>Year</label>
+                <select id="v2moto-year" onchange="onMotoYearChange(2)">
+                    <option value="">— Year —</option>
+                </select>
+            </div>
+            <div class="compare-field">
+                <label>Make</label>
+                <select id="v2moto-make" onchange="onMotoMakeChange(2)" disabled>
+                    <option value="">— Make —</option>
+                </select>
+            </div>
+            <div class="compare-field">
+                <label>Model</label>
+                <select id="v2moto-model" disabled>
+                    <option value="">— Model —</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Boat dropdowns -->
+        <div class="compare-dropdowns" id="v2-boat-dropdowns" style="display:none;">
+            <div class="compare-field">
+                <label>Year</label>
+                <select id="v2boat-year">
+                    <option value="">— Year —</option>
+                </select>
+            </div>
+            <div class="compare-field">
+                <label>Make</label>
+                <select id="v2boat-make" onchange="onBoatMakeChange(2)" disabled>
+                    <option value="">— Make —</option>
+                </select>
+            </div>
+            <div class="compare-field">
+                <label>Model</label>
+                <select id="v2boat-model" disabled>
+                    <option value="">— Model —</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <div id="results"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='vehicleData.js') }}"></script>
+<script src="{{ url_for('static', filename='compare.js') }}"></script>
+{% endblock %}
