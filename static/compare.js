@@ -322,6 +322,54 @@ function showSVGFallback(box, type) {
 
 
 
+function buildVsStats(c1, c2) {
+    const n1 = `${c1.year} ${c1.make} ${c1.model}`;
+    const n2 = `${c2.year} ${c2.make} ${c2.model}`;
+
+    const statRow = (label, val1, val2, unit = "", higherIsBetter = true) => {
+        if (!val1 && !val2) return "";
+        const v1n = parseFloat(val1) || 0;
+        const v2n = parseFloat(val2) || 0;
+        const max = Math.max(v1n, v2n, 1);
+        const p1  = Math.round((v1n / max) * 100);
+        const p2  = Math.round((v2n / max) * 100);
+        const winner = higherIsBetter
+            ? (v1n > v2n ? 1 : v2n > v1n ? 2 : 0)
+            : (v1n < v2n ? 1 : v2n < v1n ? 2 : 0);
+
+        return `
+        <div class="vs-stat-row">
+            <span class="vs-val vs-val-left ${winner === 1 ? "vs-winner" : ""}">${val1 ? val1 + unit : "—"}</span>
+            <div class="vs-bars">
+                <div class="vs-bar-left"><div class="vs-bar-fill-left ${winner === 1 ? "vs-fill-win" : ""}" style="width:${p1}%"></div></div>
+                <span class="vs-stat-label">${label}</span>
+                <div class="vs-bar-right"><div class="vs-bar-fill-right ${winner === 2 ? "vs-fill-win" : ""}" style="width:${p2}%"></div></div>
+            </div>
+            <span class="vs-val vs-val-right ${winner === 2 ? "vs-winner" : ""}">${val2 ? val2 + unit : "—"}</span>
+        </div>`;
+    };
+
+    const hp1   = parseInt(c1.horsepower) || (c1.cylinders ? c1.cylinders * 55 : 0);
+    const hp2   = parseInt(c2.horsepower) || (c2.cylinders ? c2.cylinders * 55 : 0);
+    const costs1 = estimateCosts(c1, "car");
+    const costs2 = estimateCosts(c2, "car");
+
+    return `
+    <div class="vs-stats-section">
+        <div class="vs-stats-header">
+            <span class="vs-name-left">${n1}</span>
+            <span class="vs-badge">HEAD TO HEAD</span>
+            <span class="vs-name-right">${n2}</span>
+        </div>
+        ${statRow("Horsepower", hp1 || "", hp2 || "", " hp")}
+        ${statRow("Displacement", c1.displacement || "", c2.displacement || "", "L")}
+        ${statRow("Cylinders", c1.cylinders || "", c2.cylinders || "", " cyl")}
+        ${statRow("Est. Value", costs1.price || "", costs2.price || "", "", false)}
+        ${statRow("Annual Cost", (costs1.insurance + costs1.fuelPerYear + costs1.maintenancePerYear) || "",
+                                 (costs2.insurance + costs2.fuelPerYear + costs2.maintenancePerYear) || "", "", false)}
+    </div>`;
+}
+
 async function compareCars(v1Override, v2Override) {
     const v1Input = (v1Override || getV1SearchText()).trim();
     const v2Input = (v2Override || getV2SearchText()).trim();
@@ -342,12 +390,16 @@ async function compareCars(v1Override, v2Override) {
     ]);
     const similarities = buildSimilarities(v1, v2, type);
 
+    const vsSection = (type === "car" && v1 && v2 && !v1._notFound && !v2._notFound)
+        ? buildVsStats(v1, v2) : "";
+
     results.innerHTML = `
         <div class="comparison-layout">
             <div id="left-car"></div>
             <div class="or-divider">OR</div>
             <div id="right-car"></div>
         </div>
+        ${vsSection}
         <div class="similarities-box">
             <h2>Similarities</h2>
             ${similarities}
@@ -784,6 +836,35 @@ function buildCostBox(v, type) {
     `;
 }
 
+function buildPerformanceBars(car) {
+    const hp   = parseInt(car.horsepower) || 0;
+    const disp = parseFloat(car.displacement) || 0;
+    const cyl  = parseInt(car.cylinders) || 0;
+
+    if (!hp && !disp && !cyl) return "";
+
+    const hpPct   = hp   ? Math.min(100, Math.round((hp / 700) * 100))   : 0;
+    const dispPct = disp ? Math.min(100, Math.round((disp / 8.0) * 100)) : 0;
+    const cylPct  = cyl  ? Math.min(100, Math.round((cyl / 12) * 100))   : 0;
+
+    const bar = (label, val, pct, unit, color) => val ? `
+        <div class="perf-bar-row">
+            <span class="perf-bar-label">${label}</span>
+            <div class="perf-bar-track">
+                <div class="perf-bar-fill" style="width:${pct}%;background:${color};"></div>
+            </div>
+            <span class="perf-bar-val">${val}${unit}</span>
+        </div>` : "";
+
+    return `
+        <div class="perf-bars">
+            <h3>Performance</h3>
+            ${bar("Horsepower", hp,   hpPct,   " hp", "var(--accent)")}
+            ${bar("Displacement", disp, dispPct, "L",   "#f97316")}
+            ${bar("Cylinders",   cyl,  cylPct,  " cyl","#8b5cf6")}
+        </div>`;
+}
+
 function buildApiCompareCard(car, fallbackName) {
     const card = document.createElement("div");
     card.classList.add("comparison-card");
@@ -804,11 +885,19 @@ function buildApiCompareCard(car, fallbackName) {
 
     const pros = buildProsFromSpecs(car);
     const cons = buildConsFromSpecs(car);
+    const trans = car.transmission === "a" ? "Automatic" : car.transmission === "m" ? "Manual" : car.transmission || "N/A";
+    const drive = (car.drive || "N/A").toUpperCase();
 
     card.innerHTML = `
         <div class="vehicle-image-box" style="display:flex;align-items:center;justify-content:center;"><i data-lucide="car" style="width:56px;height:56px;"></i></div>
 
         <h2>${car.year} ${car.make.toUpperCase()} ${car.model.toUpperCase()}</h2>
+
+        <div class="card-badges">
+            ${car.drive    ? `<span class="card-badge">${drive}</span>` : ""}
+            ${car.fuel_type ? `<span class="card-badge">${car.fuel_type.toUpperCase()}</span>` : ""}
+            ${car.class    ? `<span class="card-badge">${car.class}</span>` : ""}
+        </div>
 
         <div class="features-box">
             <h3>Pros</h3>
@@ -818,18 +907,20 @@ function buildApiCompareCard(car, fallbackName) {
             <ul>${cons}</ul>
 
             <h3>Specs</h3>
-            <ul>
-                <li><strong>Class:</strong> ${car.class || "N/A"}</li>
-                <li><strong>Cylinders:</strong> ${car.cylinders || "N/A"}</li>
-                <li><strong>Displacement:</strong> ${car.displacement ? car.displacement + "L" : "N/A"}</li>
-                <li><strong>Drive:</strong> ${car.drive || "N/A"}</li>
-                <li><strong>Fuel:</strong> ${car.fuel_type || "N/A"}</li>
-                <li><strong>Transmission:</strong> ${car.transmission === "a" ? "Automatic" : car.transmission === "m" ? "Manual" : car.transmission || "N/A"}</li>
-                ${car.horsepower ? `<li><strong>Horsepower:</strong> ${car.horsepower} hp</li>` : ""}
-                ${car.torque     ? `<li><strong>Torque:</strong> ${car.torque}</li>` : ""}
-                ${car._local     ? `<li style="color:var(--text-muted);font-size:12px;">* Specs from local database</li>` : ""}
-            </ul>
+            <div class="specs-grid">
+                ${car.cylinders    ? `<div class="spec-item"><span class="spec-label">Cylinders</span><span class="spec-val">${car.cylinders}</span></div>` : ""}
+                ${car.displacement ? `<div class="spec-item"><span class="spec-label">Displacement</span><span class="spec-val">${car.displacement}L</span></div>` : ""}
+                ${car.horsepower   ? `<div class="spec-item"><span class="spec-label">Horsepower</span><span class="spec-val">${car.horsepower} hp</span></div>` : ""}
+                ${car.torque       ? `<div class="spec-item"><span class="spec-label">Torque</span><span class="spec-val">${car.torque}</span></div>` : ""}
+                <div class="spec-item"><span class="spec-label">Drive</span><span class="spec-val">${drive}</span></div>
+                <div class="spec-item"><span class="spec-label">Trans.</span><span class="spec-val">${trans}</span></div>
+                ${car.fuel_type ? `<div class="spec-item"><span class="spec-label">Fuel</span><span class="spec-val">${car.fuel_type}</span></div>` : ""}
+                ${car.class     ? `<div class="spec-item"><span class="spec-label">Class</span><span class="spec-val">${car.class}</span></div>` : ""}
+            </div>
+            ${car._local ? `<p style="color:var(--text-muted);font-size:11px;margin-top:6px;">* Specs from local database</p>` : ""}
         </div>
+
+        ${buildPerformanceBars(car)}
         ${buildCostBox(car, "car")}
     `;
 
@@ -837,51 +928,162 @@ function buildApiCompareCard(car, fallbackName) {
 }
 
 function buildProsFromSpecs(car) {
-    let pros = [];
+    const pros = [];
+    const make  = (car.make  || "").toLowerCase();
+    const cls   = (car.class || "").toLowerCase();
+    const hp    = parseInt(car.horsepower) || (car.cylinders ? car.cylinders * 55 : 150);
+    const disp  = parseFloat(car.displacement) || 2.0;
+    const cyl   = parseInt(car.cylinders) || 4;
+    const drive = (car.drive || "").toLowerCase();
+    const fuel  = (car.fuel_type || "gas").toLowerCase();
+    const trans = (car.transmission || "a").toLowerCase();
+    const year  = parseInt(car.year) || 2020;
 
-    if (car.cylinders <= 4) {
-        pros.push("Likely better fuel efficiency than larger engines");
+    const luxuryBrands = ["acura","lexus","infiniti","bmw","mercedes","audi","cadillac","lincoln","genesis","volvo"];
+    const isLuxury = luxuryBrands.some(b => make.includes(b));
+
+    // Fuel / powertrain
+    if (fuel === "electric") {
+        pros.push("Zero emissions with instant electric torque from a standstill");
+        pros.push("Lower running costs — no gasoline, fewer moving parts to service");
+    } else if (fuel === "hybrid") {
+        pros.push("Hybrid powertrain blends performance with improved fuel efficiency");
+        pros.push("Electric motor assist adds torque at low speeds where gas engines are weakest");
+    } else if (fuel === "diesel") {
+        pros.push("Diesel delivers strong low-end torque and excellent highway fuel economy");
     }
 
-    if (car.drive === "fwd") {
-        pros.push("Front-wheel drive is practical for daily driving");
+    // Drivetrain
+    if (drive === "awd" || drive === "4wd") {
+        pros.push("All-wheel drive provides confident grip in rain, snow, and spirited driving");
+    } else if (drive === "rwd" && hp > 250) {
+        pros.push("Rear-wheel drive delivers a dynamic, rear-biased driving feel — ideal for enthusiasts");
+    } else if (drive === "fwd") {
+        pros.push("Front-wheel drive is reliable and predictable for daily commuting");
     }
 
-    if (car.class && car.class.includes("midsize")) {
-        pros.push("Midsize class gives a good balance of comfort and usability");
+    // Power / engine character
+    if (hp >= 450) {
+        pros.push(`${hp}hp output puts this in supercar territory — serious straight-line performance`);
+    } else if (hp >= 300) {
+        pros.push(`${hp}hp gives real performance credentials without going full exotic`);
+    } else if (hp >= 200) {
+        pros.push(`${hp}hp strikes a good balance of punch and daily usability`);
+    } else if (hp > 0) {
+        pros.push(`Modest ${hp}hp output prioritizes efficiency and low running costs`);
     }
 
-    if (car.fuel_type === "gas") {
-        pros.push("Gas engines are easy to refuel and commonly serviced");
+    // Cylinder-specific character
+    if (cyl === 8) {
+        pros.push("V8 delivers the iconic exhaust note and character that enthusiasts value");
+    } else if (cyl === 6 && disp <= 3.5) {
+        pros.push("V6 hits a sweet spot between efficiency and available power");
+    } else if (cyl <= 4 && disp <= 2.0) {
+        pros.push("Compact engine keeps fuel and ownership costs low for daily use");
     }
 
-    if (pros.length === 0) {
-        pros.push("Has useful baseline vehicle specs");
+    // Manual transmission
+    if (trans === "m") {
+        pros.push("Manual gearbox gives the driver full control and a more connected experience");
     }
 
-    return pros.map(item => `<li>${item}</li>`).join("");
+    // Class
+    if (cls.includes("two seater") || cls.includes("sport")) {
+        pros.push("Purpose-built sports proportions keep weight low and driver focus high");
+    }
+    if (cls.includes("midsize") || cls.includes("large")) {
+        pros.push("Larger class means comfortable room for passengers and real cargo space");
+    }
+    if (cls.includes("suv")) {
+        pros.push("SUV body style combines practicality with available all-wheel drive and higher seating");
+    }
+
+    // Luxury / reliability
+    if (isLuxury) {
+        pros.push("Premium brand brings refined interior quality and strong long-term resale value");
+    }
+
+    // Modern tech
+    if (year >= 2020) {
+        pros.push("Recent model year includes modern driver-assist tech, connectivity, and safety features");
+    }
+
+    return pros.slice(0, 4).map(p => `<li>${p}</li>`).join("") || `<li>Solid vehicle specs for its class</li>`;
 }
 
 function buildConsFromSpecs(car) {
-    let cons = [];
+    const cons = [];
+    const make  = (car.make  || "").toLowerCase();
+    const cls   = (car.class || "").toLowerCase();
+    const hp    = parseInt(car.horsepower) || (car.cylinders ? car.cylinders * 55 : 150);
+    const disp  = parseFloat(car.displacement) || 2.0;
+    const cyl   = parseInt(car.cylinders) || 4;
+    const drive = (car.drive || "").toLowerCase();
+    const fuel  = (car.fuel_type || "gas").toLowerCase();
+    const trans = (car.transmission || "a").toLowerCase();
+    const year  = parseInt(car.year) || 2020;
 
-    if (car.cylinders <= 4) {
-        cons.push("May have less power than V6 or V8 options");
+    const europeanLuxury = ["bmw","mercedes","audi","jaguar","land rover","maserati","alfa romeo","volvo"];
+    const isEuroLuxury = europeanLuxury.some(b => make.includes(b));
+
+    // Fuel consumption
+    if (cyl >= 8 || disp >= 5.0) {
+        cons.push(`${cyl}-cylinder ${disp}L engine means high fuel costs — expect 12–16 mpg in mixed driving`);
+    } else if (cyl >= 6 && disp >= 3.5) {
+        cons.push("V6 fuel economy won't satisfy drivers prioritizing efficiency");
     }
 
-    if (car.drive === "fwd") {
-        cons.push("Not ideal for high-performance rear-wheel-drive builds");
+    // Drivetrain limitations
+    if (drive === "rwd") {
+        cons.push("Rear-wheel drive demands more attention in wet or icy conditions");
+    } else if (drive === "fwd" && hp > 200) {
+        cons.push("Front-wheel drive limits the performance feel for a car with this much power — torque steer can be an issue");
     }
 
-    if (car.transmission === "m") {
-        cons.push("Manual transmission may not fit every driver");
+    // Hybrid complexity
+    if (fuel === "hybrid") {
+        cons.push("Hybrid battery replacement is an expensive long-term consideration");
     }
 
-    if (cons.length === 0) {
-        cons.push("No major drawbacks detected from available specs");
+    // Electric charging
+    if (fuel === "electric") {
+        cons.push("Range and charging speed depend heavily on infrastructure where you live");
     }
 
-    return cons.map(item => `<li>${item}</li>`).join("");
+    // Older tech
+    if (year <= 2016) {
+        cons.push("Older model year means infotainment and safety tech feel dated versus current competition");
+    }
+
+    // Manual in traffic
+    if (trans === "m") {
+        cons.push("Manual gearbox gets tiring quickly in heavy stop-and-go city traffic");
+    }
+
+    // Practicality
+    if (cls.includes("two seater")) {
+        cons.push("Two-seat layout makes this a weekend car — no room for passengers or family errands");
+    }
+    if (cls.includes("subcompact")) {
+        cons.push("Subcompact dimensions limit cargo space and long-trip comfort");
+    }
+
+    // Insurance / running costs for performance
+    if (hp >= 350 || (cyl >= 8 && drive === "rwd")) {
+        cons.push("High-performance profile typically attracts higher insurance premiums");
+    }
+
+    // European luxury maintenance
+    if (isEuroLuxury) {
+        cons.push("European luxury brands carry significantly higher service and parts costs out of warranty");
+    }
+
+    // Underpowered for type
+    if (cyl <= 4 && hp < 180 && (cls.includes("large") || cls.includes("suv"))) {
+        cons.push("Small engine in a large/heavy body results in sluggish acceleration when loaded");
+    }
+
+    return cons.slice(0, 3).map(c => `<li>${c}</li>`).join("") || `<li>No significant drawbacks based on available specs</li>`;
 }
 
 function buildApiSimilarities(car1, car2) {
