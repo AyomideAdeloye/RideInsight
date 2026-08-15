@@ -20,9 +20,13 @@
         <div class="builder-visual-panel">
 
             <!-- 3D Rotating Car -->
-            <div class="viewer-3d-wrap">
+            <div class="viewer-3d-wrap" style="position:relative;">
                 <div class="viewer-3d-label">3D Preview</div>
                 <canvas id="carCanvas"></canvas>
+                <div id="modelLoadOverlay" style="display:none;">
+                    <div class="spinner"></div>
+                    <div id="modelLoadStatus">Loading model…</div>
+                </div>
                 <div class="viewer-controls">
                     <button class="viewer-ctrl-btn" onclick="rotateLeft()"><i data-lucide="chevron-left"></i></button>
                     <button class="viewer-ctrl-btn" id="autoRotateBtn" onclick="toggleAutoRotate()">⏸ Auto</button>
@@ -136,5 +140,6 @@
 {% block scripts %}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 <script src="{{ url_for('static', filename='builder.js') }}"></script>
 {% endblock %}
