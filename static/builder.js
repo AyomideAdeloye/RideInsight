@@ -169,23 +169,23 @@ function initScene() {
 
     // Scene
     scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x0d1117);
-    scene.fog = new THREE.FogExp2(0x0d1117, 0.04);
+    scene.background = new THREE.Color(0x111827);
+    scene.fog = new THREE.Fog(0x111827, 20, 60);
 
     // Camera
-    camera = new THREE.PerspectiveCamera(42, canvas.clientWidth / canvas.clientHeight, 0.1, 200);
-    camera.position.set(5, 2.5, 7);
+    camera = new THREE.PerspectiveCamera(38, canvas.clientWidth / canvas.clientHeight, 0.1, 200);
+    camera.position.set(6, 2.2, 10);
 
     // OrbitControls
     controls = new THREE.OrbitControls(camera, renderer.domElement);
-    controls.enableDamping  = true;
-    controls.dampingFactor  = 0.06;
-    controls.minDistance    = 3;
-    controls.maxDistance    = 18;
-    controls.maxPolarAngle  = Math.PI / 2 + 0.05;
-    controls.autoRotate     = true;
-    controls.autoRotateSpeed = 1.2;
-    controls.target.set(0, 0.8, 0);
+    controls.enableDamping   = true;
+    controls.dampingFactor   = 0.07;
+    controls.minDistance     = 4;
+    controls.maxDistance     = 22;
+    controls.maxPolarAngle   = Math.PI / 2 - 0.02;
+    controls.autoRotate      = true;
+    controls.autoRotateSpeed = 0.9;
+    controls.target.set(0, 0.6, 0);
 
     // Lights
     const ambient = new THREE.AmbientLight(0xffffff, 0.7);
@@ -211,16 +211,16 @@ function initScene() {
 
     // Ground
     const ground = new THREE.Mesh(
-        new THREE.PlaneGeometry(30, 30),
-        new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.9, metalness: 0.1 })
+        new THREE.PlaneGeometry(60, 60),
+        new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.85, metalness: 0.15 })
     );
     ground.rotation.x = -Math.PI / 2;
     ground.receiveShadow = true;
     scene.add(ground);
 
-    // Ground reflection line
-    const lineGeo = new THREE.PlaneGeometry(6, 0.01);
-    const lineMat = new THREE.MeshBasicMaterial({ color: 0xe11d48, transparent: true, opacity: 0.6 });
+    // Accent ground stripe
+    const lineGeo = new THREE.PlaneGeometry(10, 0.05);
+    const lineMat = new THREE.MeshBasicMaterial({ color: 0xe11d48, transparent: true, opacity: 0.5 });
     const line = new THREE.Mesh(lineGeo, lineMat);
     line.rotation.x = -Math.PI / 2;
     line.position.y = 0.001;
@@ -235,8 +235,8 @@ function initScene() {
 function resizeRenderer() {
     const canvas = document.getElementById("carCanvas");
     if (!canvas || !renderer) return;
-    const w = canvas.parentElement.clientWidth  || 600;
-    const h = Math.round(w * 0.56);
+    const w = canvas.parentElement.clientWidth || 600;
+    const h = Math.max(340, Math.round(w * 0.6));
     canvas.style.width  = w + "px";
     canvas.style.height = h + "px";
     renderer.setSize(w, h, false);
@@ -275,17 +275,31 @@ function loadModel() {
             // Set initial part visibility
             applyVisibility();
 
-            // Center and scale
+            // Rotate to face camera (Blender exports front facing -Z, Three.js camera looks at +Z)
+            carModel.rotation.y = Math.PI;
+
+            // Scale first using the car's footprint (length × width, not height)
+            const box0  = new THREE.Box3().setFromObject(carModel);
+            const size0 = box0.getSize(new THREE.Vector3());
+            const footprint = Math.max(size0.x, size0.z);
+            const scale = footprint > 0 ? 7 / footprint : 1;
+            carModel.scale.setScalar(scale);
+
+            // Now center and sit on ground
             const box    = new THREE.Box3().setFromObject(carModel);
             const center = box.getCenter(new THREE.Vector3());
-            const size   = box.getSize(new THREE.Vector3());
-            carModel.position.sub(center);
-            carModel.position.y = size.y / 2;
-
-            const maxDim = Math.max(size.x, size.y, size.z);
-            if (maxDim > 0) carModel.scale.setScalar(5 / maxDim);
+            carModel.position.x = -center.x;
+            carModel.position.z = -center.z;
+            carModel.position.y = -box.min.y;     // bottom of car on y=0
 
             scene.add(carModel);
+
+            // Aim camera at car's centre-mass
+            const finalBox  = new THREE.Box3().setFromObject(carModel);
+            const carHeight = finalBox.max.y - finalBox.min.y;
+            controls.target.set(0, carHeight * 0.35, 0);
+            camera.position.set(7, carHeight * 0.7, 11);
+            controls.update();
 
             // Apply default paint
             applyPaint(currentPaintHex);
@@ -338,19 +352,25 @@ function swapPart(categoryKey, variantName) {
     }
 }
 
+// Names of meshes that receive body paint
+const PAINTABLE_MESHES = [
+    "Body", "Hood_A", "Hood_B", "Hood_C",
+    "FrontBumper_A", "FrontBumper_B", "FrontBumper_C",
+    "RearBumper_A",  "RearBumper_B",  "RearBumper_C",
+    "Fender_A",      "Fender_B",      "Fender_C",
+    "RunningBoard_A","RunningBoard_B","RunningBoard_C",
+    "Spoiler_A",     "Spoiler_B",     "Spoiler_C",
+];
+
 function applyPaint(hex) {
     currentPaintHex = hex;
     if (!carModel) return;
     const color = new THREE.Color(hex);
-    carModel.traverse(node => {
-        if (!node.isMesh) return;
+    PAINTABLE_MESHES.forEach(name => {
+        const node = meshMap[name];
+        if (!node || !node.isMesh) return;
         const mats = Array.isArray(node.material) ? node.material : [node.material];
-        mats.forEach(mat => {
-            if (!mat || !mat.color) return;
-            // Only tint light-colored or primary materials (skip dark glass/rubber)
-            const lum = mat.color.r * 0.299 + mat.color.g * 0.587 + mat.color.b * 0.114;
-            if (lum > 0.08) mat.color.set(color);
-        });
+        mats.forEach(mat => { if (mat && mat.color) mat.color.set(color); });
     });
 }
 
