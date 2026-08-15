@@ -164,67 +164,69 @@ function initScene() {
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.outputEncoding = THREE.sRGBEncoding;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.1;
+    renderer.toneMappingExposure = 0.95;
     resizeRenderer();
+    buildEnvMap();
 
-    // Scene
+    // Scene — clean studio look
     scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x111827);
-    scene.fog = new THREE.Fog(0x111827, 20, 60);
+    scene.background = new THREE.Color(0xf0f2f5);
+    scene.fog = new THREE.Fog(0xf0f2f5, 30, 70);
 
     // Camera
-    camera = new THREE.PerspectiveCamera(38, canvas.clientWidth / canvas.clientHeight, 0.1, 200);
-    camera.position.set(6, 2.2, 10);
+    camera = new THREE.PerspectiveCamera(34, canvas.clientWidth / canvas.clientHeight, 0.1, 200);
+    camera.position.set(5, 1.8, 9);
 
     // OrbitControls
     controls = new THREE.OrbitControls(camera, renderer.domElement);
     controls.enableDamping   = true;
     controls.dampingFactor   = 0.07;
-    controls.minDistance     = 4;
-    controls.maxDistance     = 22;
-    controls.maxPolarAngle   = Math.PI / 2 - 0.02;
+    controls.minDistance     = 3;
+    controls.maxDistance     = 18;
+    controls.maxPolarAngle   = Math.PI / 2 - 0.04;
     controls.autoRotate      = true;
-    controls.autoRotateSpeed = 0.9;
-    controls.target.set(0, 0.6, 0);
+    controls.autoRotateSpeed = 0.7;
+    controls.target.set(0, 0.5, 0);
 
-    // Lights
-    const ambient = new THREE.AmbientLight(0xffffff, 0.7);
+    // Studio lights
+    const ambient = new THREE.AmbientLight(0xffffff, 1.2);
     scene.add(ambient);
 
-    const key = new THREE.DirectionalLight(0xfff5e0, 1.8);
-    key.position.set(6, 10, 6);
+    // Key light — upper right front
+    const key = new THREE.DirectionalLight(0xffffff, 1.6);
+    key.position.set(8, 14, 8);
     key.castShadow = true;
     key.shadow.mapSize.set(2048, 2048);
-    key.shadow.camera.near = 0.5;
-    key.shadow.camera.far  = 50;
-    key.shadow.camera.left = key.shadow.camera.bottom = -8;
-    key.shadow.camera.right = key.shadow.camera.top = 8;
+    key.shadow.camera.near = 1;
+    key.shadow.camera.far  = 60;
+    key.shadow.camera.left = key.shadow.camera.bottom = -10;
+    key.shadow.camera.right = key.shadow.camera.top = 10;
+    key.shadow.bias = -0.001;
     scene.add(key);
 
-    const fill = new THREE.DirectionalLight(0x6fb5ff, 0.6);
-    fill.position.set(-6, 3, -4);
+    // Fill light — upper left
+    const fill = new THREE.DirectionalLight(0xddeeff, 0.7);
+    fill.position.set(-8, 8, 4);
     scene.add(fill);
 
-    const rim = new THREE.DirectionalLight(0xffffff, 0.4);
-    rim.position.set(0, 4, -8);
+    // Rim light — behind car
+    const rim = new THREE.DirectionalLight(0xffffff, 0.5);
+    rim.position.set(0, 6, -10);
     scene.add(rim);
 
-    // Ground
+    // Bounce light — from below (studio floor reflection)
+    const bounce = new THREE.DirectionalLight(0xffffff, 0.25);
+    bounce.position.set(0, -4, 6);
+    scene.add(bounce);
+
+    // Ground — studio floor
     const ground = new THREE.Mesh(
-        new THREE.PlaneGeometry(60, 60),
-        new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.85, metalness: 0.15 })
+        new THREE.PlaneGeometry(80, 80),
+        new THREE.MeshStandardMaterial({ color: 0xe4e6e9, roughness: 1.0, metalness: 0 })
     );
     ground.rotation.x = -Math.PI / 2;
     ground.receiveShadow = true;
     scene.add(ground);
-
-    // Accent ground stripe
-    const lineGeo = new THREE.PlaneGeometry(10, 0.05);
-    const lineMat = new THREE.MeshBasicMaterial({ color: 0xe11d48, transparent: true, opacity: 0.5 });
-    const line = new THREE.Mesh(lineGeo, lineMat);
-    line.rotation.x = -Math.PI / 2;
-    line.position.y = 0.001;
-    scene.add(line);
 
     loadModel();
     animate();
@@ -233,17 +235,50 @@ function initScene() {
 }
 
 function resizeRenderer() {
-    const canvas = document.getElementById("carCanvas");
-    if (!canvas || !renderer) return;
-    const w = canvas.parentElement.clientWidth || 600;
-    const h = Math.max(340, Math.round(w * 0.6));
-    canvas.style.width  = w + "px";
-    canvas.style.height = h + "px";
+    const wrap = document.getElementById("viewer3dWrap");
+    if (!wrap || !renderer) return;
+    const w = wrap.clientWidth  || 800;
+    const h = wrap.clientHeight || 600;
     renderer.setSize(w, h, false);
     if (camera) {
         camera.aspect = w / h;
         camera.updateProjectionMatrix();
     }
+}
+
+// Studio environment map — gives metallic car paint its reflections
+function buildEnvMap() {
+    const size = 512;
+    const ec = document.createElement("canvas");
+    ec.width = size; ec.height = size / 2;
+    const ctx = ec.getContext("2d");
+
+    // Sky gradient (top)
+    const sky = ctx.createLinearGradient(0, 0, 0, ec.height * 0.55);
+    sky.addColorStop(0, "#ffffff");
+    sky.addColorStop(1, "#e8eaed");
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, size, ec.height * 0.55);
+
+    // Ground gradient (bottom)
+    const gnd = ctx.createLinearGradient(0, ec.height * 0.55, 0, ec.height);
+    gnd.addColorStop(0, "#d8dadd");
+    gnd.addColorStop(1, "#c8cacd");
+    ctx.fillStyle = gnd;
+    ctx.fillRect(0, ec.height * 0.55, size, ec.height);
+
+    // Two bright studio light boxes
+    ctx.fillStyle = "rgba(255,255,255,0.9)";
+    ctx.fillRect(60, 10, 100, 60);   // left box
+    ctx.fillRect(340, 10, 80, 50);   // right box
+
+    const envTex = new THREE.CanvasTexture(ec);
+    envTex.mapping = THREE.EquirectangularReflectionMapping;
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    pmrem.compileEquirectangularShader();
+    scene.environment = pmrem.fromEquirectangular(envTex).texture;
+    pmrem.dispose();
+    envTex.dispose();
 }
 
 function loadModel() {
@@ -293,12 +328,13 @@ function loadModel() {
             carModel.position.y = -box.min.y;     // bottom of car on y=0
 
             scene.add(carModel);
+            prepMaterials();
 
-            // Aim camera at car's centre-mass
-            const finalBox  = new THREE.Box3().setFromObject(carModel);
-            const carHeight = finalBox.max.y - finalBox.min.y;
-            controls.target.set(0, carHeight * 0.35, 0);
-            camera.position.set(7, carHeight * 0.7, 11);
+            // Fixed 3/4 camera — far enough to see the full car with breathing room
+            controls.target.set(0, 1.1, 0);
+            camera.position.set(5, 2.8, 13);
+            controls.minDistance = 5;
+            controls.maxDistance = 22;
             controls.update();
 
             // Apply default paint
@@ -352,25 +388,61 @@ function swapPart(categoryKey, variantName) {
     }
 }
 
-// Names of meshes that receive body paint
-const PAINTABLE_MESHES = [
-    "Body", "Hood_A", "Hood_B", "Hood_C",
-    "FrontBumper_A", "FrontBumper_B", "FrontBumper_C",
-    "RearBumper_A",  "RearBumper_B",  "RearBumper_C",
-    "Fender_A",      "Fender_B",      "Fender_C",
-    "RunningBoard_A","RunningBoard_B","RunningBoard_C",
-    "Spoiler_A",     "Spoiler_B",     "Spoiler_C",
-];
+// Meshes excluded from paint
+const NO_PAINT_MESHES = new Set([
+    "Interior",
+    "SM_Wheel_FL", "SM_Wheel_FR", "SM_Wheel_BL", "SM_Wheel_BR",
+]);
 
 function applyPaint(hex) {
     currentPaintHex = hex;
     if (!carModel) return;
     const color = new THREE.Color(hex);
-    PAINTABLE_MESHES.forEach(name => {
-        const node = meshMap[name];
-        if (!node || !node.isMesh) return;
+    // Paint ALL meshes (including hidden variants) so swaps look correct
+    carModel.traverse(node => {
+        if (!node.isMesh) return;
+        if (NO_PAINT_MESHES.has(node.name)) return;
         const mats = Array.isArray(node.material) ? node.material : [node.material];
-        mats.forEach(mat => { if (mat && mat.color) mat.color.set(color); });
+        mats.forEach(mat => {
+            if (!mat) return;
+            // Skip glass/transparent materials
+            if (mat.transparent && mat.opacity < 0.4) return;
+            // Clone material once to avoid sharing across instances
+            if (!mat._paintCloned) {
+                const m = mat.clone();
+                m._paintCloned = true;
+                if (Array.isArray(node.material)) {
+                    const idx = node.material.indexOf(mat);
+                    node.material[idx] = m;
+                } else {
+                    node.material = m;
+                }
+                mat = m;
+            }
+            mat.color.set(color);
+            // Give it glossy car-paint properties
+            mat.roughness = 0.12;
+            mat.metalness = 0.55;
+            mat.needsUpdate = true;
+        });
+    });
+}
+
+// Call once on load to set up glossy materials even before color pick
+function prepMaterials() {
+    if (!carModel) return;
+    carModel.traverse(node => {
+        if (!node.isMesh) return;
+        // Wheels get dark rubber look
+        if (NO_PAINT_MESHES.has(node.name)) {
+            const mats = Array.isArray(node.material) ? node.material : [node.material];
+            mats.forEach(mat => {
+                if (!mat) return;
+                mat.roughness = 0.85;
+                mat.metalness = 0.1;
+                mat.needsUpdate = true;
+            });
+        }
     });
 }
 

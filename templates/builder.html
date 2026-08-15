@@ -2,71 +2,49 @@
 {% block content %}
 <div class="builder-page">
 
-    <div class="builder-header">
-        <div>
-            <h2>Build Custom Vehicle</h2>
-            <p class="builder-subtitle">Configure your dream build with live 3D preview</p>
-        </div>
-        <div class="builder-header-actions">
-            <input id="buildName" class="build-name-input" placeholder="Name your build…">
-            <button class="btn btn-primary" onclick="saveBuild()">💾 Save Build</button>
-            <button class="btn btn-ghost" onclick="clearBuild()">🗑 Clear</button>
-        </div>
-    </div>
-
     <div class="builder-layout">
 
-        <!-- LEFT: 3D Viewer + 2.5D silhouette -->
+        <!-- LEFT: Full-height sticky 3D viewer -->
         <div class="builder-visual-panel">
-
-            <!-- 3D Rotating Car -->
-            <div class="viewer-3d-wrap" style="position:relative;">
-                <div class="viewer-3d-label">3D Preview</div>
+            <div class="viewer-3d-wrap" id="viewer3dWrap">
                 <canvas id="carCanvas"></canvas>
-                <div id="modelLoadOverlay" style="display:none;">
+                <div id="modelLoadOverlay">
                     <div class="spinner"></div>
                     <div id="modelLoadStatus">Loading model…</div>
                 </div>
-                <div class="viewer-controls">
-                    <button class="viewer-ctrl-btn" onclick="rotateLeft()"><i data-lucide="chevron-left"></i></button>
-                    <button class="viewer-ctrl-btn" id="autoRotateBtn" onclick="toggleAutoRotate()">⏸ Auto</button>
-                    <button class="viewer-ctrl-btn" onclick="rotateRight()"><i data-lucide="chevron-right"></i></button>
-                </div>
-                <!-- Color picker -->
-                <div class="color-picker-row">
-                    <span class="color-label">Paint:</span>
-                    <div class="color-swatches" id="colorSwatches"></div>
-                    <input type="color" id="customColor" title="Custom color" onchange="setCarColor(this.value)">
-                </div>
-            </div>
 
-            <!-- 2.5D Silhouette -->
-            <div class="silhouette-wrap">
-                <div class="viewer-3d-label">Part Highlights</div>
-                <div class="silhouette-container">
-                    <svg id="carSilhouette" viewBox="0 0 800 320" xmlns="http://www.w3.org/2000/svg"></svg>
-                    <div id="silhouetteTooltip" class="sil-tooltip" style="display:none;"></div>
+                <!-- Top-left: build name + actions -->
+                <div class="viewer-top-bar">
+                    <input id="buildName" class="build-name-input" placeholder="Name your build…">
+                    <button class="btn-viewer btn-save" onclick="saveBuild()">Save</button>
+                    <button class="btn-viewer btn-clear" onclick="clearBuild()">Clear</button>
                 </div>
-                <div class="sil-legend" id="silLegend"></div>
-            </div>
 
-            <!-- Build Summary -->
-            <div class="build-summary" id="buildSummary">
-                <div class="summary-header">
-                    <h3>Build Summary</h3>
-                    <span id="partCount" class="part-count">0 parts</span>
-                </div>
-                <div id="summaryList" class="summary-list"></div>
-                <div class="summary-totals">
-                    <div class="summary-row"><span>Base Vehicle</span><span id="summaryBase">$0</span></div>
-                    <div class="summary-row"><span>Total Mods</span><span id="summaryMods">$0</span></div>
-                    <div class="summary-row total-row"><span>Grand Total</span><span id="summaryTotal">$0</span></div>
+                <!-- Bottom: paint swatches + rotate controls -->
+                <div class="viewer-bottom-bar">
+                    <div class="viewer-paint-row">
+                        <span class="paint-label">COLOR</span>
+                        <div class="color-swatches" id="colorSwatches"></div>
+                        <input type="color" id="customColor" title="Custom color" onchange="setCarColor(this.value)">
+                    </div>
+                    <div class="viewer-rotate-row">
+                        <button class="viewer-ctrl-btn" onclick="rotateLeft()"><i data-lucide="chevron-left"></i></button>
+                        <button class="viewer-ctrl-btn" id="autoRotateBtn" onclick="toggleAutoRotate()">
+                            <i data-lucide="rotate-cw"></i> Auto
+                        </button>
+                        <button class="viewer-ctrl-btn" onclick="rotateRight()"><i data-lucide="chevron-right"></i></button>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <!-- RIGHT: Parts Panel -->
+        <!-- RIGHT: Scrollable config panel -->
         <div class="builder-parts-panel">
+
+            <div class="parts-panel-header">
+                <h2>Build Custom Vehicle</h2>
+                <p>Configure your dream ride</p>
+            </div>
 
             <!-- Base Vehicle -->
             <div class="builder-section">
@@ -106,31 +84,37 @@
                             <input type="hidden" id="basePrice" value="0">
                         </div>
                     </div>
-                    <div id="baseVehicleDisplay" style="display:none;"></div>
-
-                    <div id="generate3dWrap" style="display:none;margin-top:12px;">
-                        <button class="btn btn-generate3d" id="generate3dBtn" onclick="trigger3DGeneration()">
-                            <i data-lucide="sparkles"></i> Generate 3D Model
-                        </button>
-                        <div id="generate3dStatus" class="generate3d-status" style="display:none;"></div>
-                    </div>
                 </div>
             </div>
 
-            <!-- Category sections injected by JS -->
+            <!-- Dynamic category sections (visual + perf) -->
             <div id="categorySections"></div>
 
-        </div>
-    </div>
+            <!-- Build Summary -->
+            <div class="build-summary" id="buildSummary">
+                <div class="summary-header">
+                    <h3>Build Summary</h3>
+                    <span id="partCount" class="part-count">0 mods</span>
+                </div>
+                <div id="summaryList" class="summary-list"></div>
+                <div class="summary-totals">
+                    <div class="summary-row"><span>Base Vehicle</span><span id="summaryBase">—</span></div>
+                    <div class="summary-row"><span>Performance Mods</span><span id="summaryMods">$0</span></div>
+                    <div class="summary-row total-row"><span>Grand Total</span><span id="summaryTotal">$0</span></div>
+                </div>
+            </div>
 
-    <!-- Saved Builds -->
-    <div class="builder-section" style="margin-top:24px;">
-        <div class="builder-section-header" onclick="toggleSection('savedBuilds')">
-            <span>📋 My Saved Builds</span>
-            <span class="section-toggle" id="toggle-savedBuilds"><i data-lucide="chevron-down"></i></span>
-        </div>
-        <div class="builder-section-body" id="body-savedBuilds">
-            <div id="savedBuilds"><p class="empty-state" style="padding:8px 0;">No saved builds yet.</p></div>
+            <!-- Saved Builds -->
+            <div class="builder-section">
+                <div class="builder-section-header" onclick="toggleSection('savedBuilds')">
+                    <span><i data-lucide="bookmark"></i> My Saved Builds</span>
+                    <span class="section-toggle" id="toggle-savedBuilds"><i data-lucide="chevron-down"></i></span>
+                </div>
+                <div class="builder-section-body" id="body-savedBuilds" style="display:none;">
+                    <div id="savedBuilds"><p class="empty-state" style="padding:8px 0;">No saved builds yet.</p></div>
+                </div>
+            </div>
+
         </div>
     </div>
 
