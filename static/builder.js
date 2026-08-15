@@ -166,7 +166,6 @@ function initScene() {
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 0.95;
     resizeRenderer();
-    buildEnvMap();
 
     // Scene — clean studio look
     scene = new THREE.Scene();
@@ -228,6 +227,7 @@ function initScene() {
     ground.receiveShadow = true;
     scene.add(ground);
 
+    buildEnvMap();   // needs scene + renderer both ready
     loadModel();
     animate();
 
