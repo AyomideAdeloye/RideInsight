@@ -106,9 +106,29 @@ let currentPaintHex = "#1a1a1a";
 // ── Three.js state ─────────────────────────────────────────────────────────
 let renderer, scene, camera, controls;
 let carModel = null;
-let meshMap  = {};  // name → THREE.Object3D
+let meshMap  = {};   // legacy exact-name map
+let partNodes = {};  // variantName → [mesh nodes] (pattern-matched)
+let baseNodes = [];  // always-visible meshes (body, interior, wheels)
 let bodyMaterial = null;
 let autoRotate = true;
+
+// Match "AnyPrefix_Hood_A", "AnyPrefix_Hood_A_1", "Hood_A_2" → variant "Hood_A"
+function matchesVariant(meshName, variantName) {
+    const re = new RegExp("(^|_)" + variantName + "(_\\d+)?$");
+    return re.test(meshName);
+}
+
+// Is this mesh part of the always-visible base (body shell, interior, wheels)?
+function isBaseMesh(name) {
+    if (/SM_Wheel/.test(name)) return true;
+    if (/(^|_)Interior(_\d+)?$/.test(name)) return true;
+    if (/(^|_)Body(_\d+)?$/.test(name)) return true;
+    return false;
+}
+
+function isWheelOrInterior(name) {
+    return /SM_Wheel/.test(name) || /(^|_)Interior(_\d+)?$/.test(name);
+}
 
 // ── Performance mods (stat-based, no visual mesh swap) ─────────────────────
 const PERF_MODS = {
@@ -293,32 +313,35 @@ function loadModel() {
         (gltf) => {
             carModel = gltf.scene;
 
-            // Build name → node map + log all mesh names so we can debug
-            const foundMeshNames = [];
+            // Pattern-match every mesh into variant groups or base
+            partNodes = {};
+            ALL_PART_MESHES.forEach(v => { partNodes[v] = []; });
+            baseNodes = [];
+            const unmatched = [];
+
             carModel.traverse(node => {
+                if (!node.isMesh) return;
+                node.castShadow    = true;
+                node.receiveShadow = true;
                 meshMap[node.name] = node;
-                if (node.isMesh) {
-                    node.castShadow    = true;
-                    node.receiveShadow = true;
-                    foundMeshNames.push(node.name);
+
+                // Try to assign to a part variant
+                const variant = ALL_PART_MESHES.find(v => matchesVariant(node.name, v));
+                if (variant) {
+                    partNodes[variant].push(node);
+                } else if (isBaseMesh(node.name)) {
+                    baseNodes.push(node);
+                } else {
+                    unmatched.push(node.name);
+                    baseNodes.push(node);   // unknown → keep visible
                 }
             });
-            console.log("=== GLB Mesh Names ===", foundMeshNames);
 
-            // Check how many of our expected names were found
-            const expectedNames = [...ALL_PART_MESHES, ...ALWAYS_VISIBLE];
-            const matched = expectedNames.filter(n => meshMap[n]?.isMesh);
-            console.log(`Matched ${matched.length}/${expectedNames.length} expected meshes:`, matched);
-            const missing = expectedNames.filter(n => !meshMap[n]?.isMesh);
-            if (missing.length) console.warn("MISSING meshes:", missing);
+            const variantCount = Object.values(partNodes).reduce((s, arr) => s + arr.length, 0);
+            console.log(`Mapped ${variantCount} variant meshes, ${baseNodes.length} base meshes`);
+            if (unmatched.length) console.log("Unmatched (kept visible):", unmatched);
 
-            // If NO named meshes matched, show everything (fallback)
-            if (matched.length === 0) {
-                console.warn("No named meshes found — showing all meshes as fallback");
-                carModel.traverse(node => { if (node.isMesh) node.visible = true; });
-            } else {
-                applyVisibility();
-            }
+            applyVisibility();
 
             // Rotate to face camera (Blender exports front facing -Z, Three.js camera looks at +Z)
             carModel.rotation.y = Math.PI;
@@ -366,28 +389,26 @@ function loadModel() {
     );
 }
 
+function setVariantVisible(variantName, visible) {
+    (partNodes[variantName] || []).forEach(node => { node.visible = visible; });
+}
+
 function applyVisibility() {
-    // Hide ALL swappable meshes
-    ALL_PART_MESHES.forEach(name => {
-        if (meshMap[name]) meshMap[name].visible = false;
-    });
+    // Hide ALL swappable variant meshes
+    ALL_PART_MESHES.forEach(v => setVariantVisible(v, false));
     // Show selected variant for each category
-    Object.values(selected).forEach(name => {
-        if (meshMap[name]) meshMap[name].visible = true;
-    });
-    // Always show base meshes
-    ALWAYS_VISIBLE.forEach(name => {
-        if (meshMap[name]) meshMap[name].visible = true;
-    });
+    Object.values(selected).forEach(v => setVariantVisible(v, true));
+    // Base meshes always visible
+    baseNodes.forEach(node => { node.visible = true; });
 }
 
 function swapPart(categoryKey, variantName) {
     const prev = selected[categoryKey];
     if (prev === variantName) return;
 
-    if (prev && meshMap[prev])     meshMap[prev].visible = false;
+    if (prev) setVariantVisible(prev, false);
     selected[categoryKey] = variantName;
-    if (meshMap[variantName]) meshMap[variantName].visible = true;
+    setVariantVisible(variantName, true);
 
     // Update button states
     const catEl = document.getElementById(`cat-${categoryKey}`);
@@ -410,7 +431,7 @@ function applyPaint(hex) {
     const color = new THREE.Color(hex);
     carModel.traverse(node => {
         if (!node.isMesh) return;
-        if (NO_PAINT_MESHES.has(node.name)) return;
+        if (isWheelOrInterior(node.name)) return;
         const mats = Array.isArray(node.material) ? node.material : [node.material];
         mats.forEach(mat => {
             if (!mat || !mat.color) return;
@@ -428,7 +449,7 @@ function prepMaterials() {
         const mats = Array.isArray(node.material) ? node.material : [node.material];
         mats.forEach(mat => {
             if (!mat) return;
-            if (NO_PAINT_MESHES.has(node.name)) {
+            if (isWheelOrInterior(node.name)) {
                 mat.roughness = 0.8;
                 mat.metalness = 0.1;
             } else {
@@ -732,27 +753,30 @@ async function saveBuild() {
     const model = document.getElementById("baseModel")?.value || "";
     const trim  = document.getElementById("baseTrim")?.value  || "";
 
-    const perfMods = [];
+    // Perf mods → parts list (server format)
+    const parts = [];
     Object.entries(perfModsSelected).forEach(([cat, set]) => {
         set.forEach(modName => {
             const allMods = Object.values(PERF_MODS).flat();
             const mod = allMods.find(m => m.name === modName);
-            if (mod) perfMods.push({ category: cat, name: mod.name, cost: mod.cost });
+            if (mod) parts.push({ category: cat, name: mod.name, cost: mod.cost, effect: mod.hp ? `+${mod.hp} hp` : "", icon: mod.icon || "" });
         });
+    });
+    // Visual parts → parts list entries with $0 cost
+    Object.entries(selected).forEach(([cat, variant]) => {
+        parts.push({ category: `visual:${cat}`, name: variant, cost: 0, effect: "", icon: "" });
     });
 
     const payload = {
         name,
-        base_vehicle: [yr, make, model, trim].filter(Boolean).join(" ") || "Custom Build",
-        base_price:   basePriceCents,
-        paint:        currentPaintHex,
-        visual_parts: { ...selected },
-        perf_mods:    perfMods,
-        total_cost:   basePriceCents + perfMods.reduce((s, m) => s + m.cost, 0),
+        baseVehicle: { year: yr, make, model, trim },
+        basePrice:   basePriceCents,
+        parts,
+        carColor:    currentPaintHex,
     };
 
     try {
-        const res = await csrfFetch("/api/save_build", {
+        const res = await csrfFetch("/save_build", {
             method:  "POST",
             headers: { "Content-Type": "application/json" },
             body:    JSON.stringify(payload),
@@ -772,25 +796,27 @@ async function loadSavedBuilds() {
     const container = document.getElementById("savedBuilds");
     if (!container) return;
     try {
-        const res   = await fetch("/api/my_builds");
+        const res   = await fetch("/get_builds");
         if (!res.ok) throw new Error();
         const builds = await res.json();
         if (!builds.length) {
             container.innerHTML = `<p class="empty-state" style="padding:8px 0;">No saved builds yet.</p>`;
             return;
         }
-        container.innerHTML = builds.map(b => `
+        container.innerHTML = builds.map(b => {
+            const vehicle = [b.base_year, b.base_make, b.base_model].filter(Boolean).join(" ");
+            return `
             <div class="saved-build-card">
                 <div class="saved-build-info">
                     <strong>${b.name || "Unnamed Build"}</strong>
-                    <span>${b.base_vehicle || ""}</span>
+                    <span>${vehicle}</span>
                 </div>
                 <div class="saved-build-actions">
                     <button class="btn btn-ghost btn-sm" onclick="loadBuild(${b.id})">Load</button>
                     <button class="btn btn-ghost btn-sm btn-danger" onclick="deleteBuild(${b.id})">Delete</button>
                 </div>
-            </div>
-        `).join("");
+            </div>`;
+        }).join("");
     } catch(e) {
         container.innerHTML = `<p class="empty-state" style="padding:8px 0;">No saved builds yet.</p>`;
     }
@@ -798,16 +824,37 @@ async function loadSavedBuilds() {
 
 async function loadBuild(id) {
     try {
-        const res  = await fetch(`/api/build/${id}`);
+        const res   = await fetch(`/get_build/${id}`);
         const build = await res.json();
 
-        if (build.paint) applyPaint(build.paint);
-        if (build.visual_parts) {
-            Object.entries(build.visual_parts).forEach(([cat, variant]) => swapPart(cat, variant));
+        if (build.car_color) {
+            applyPaint(build.car_color);
+            const picker = document.getElementById("customColor");
+            if (picker) picker.value = build.car_color;
         }
+
+        // Restore parts (visual variants + perf mods)
+        let parts = [];
+        try { parts = JSON.parse(build.parts_json || "[]"); } catch(e) {}
+
+        // Reset perf mods first
+        Object.values(perfModsSelected).forEach(s => s.clear());
+        document.querySelectorAll(".mod-row").forEach(r => r.classList.remove("mod-active"));
+        document.querySelectorAll(".mod-add-btn").forEach(b => b.textContent = "Add");
+
+        parts.forEach(p => {
+            if (p.category && p.category.startsWith("visual:")) {
+                const cat = p.category.slice(7);
+                swapPart(cat, p.name);
+            } else if (perfModsSelected[p.category]) {
+                toggleMod(p.category, p.name, p.cost);
+            }
+        });
+
         if (build.name && document.getElementById("buildName")) {
             document.getElementById("buildName").value = build.name;
         }
+        updateBuildSummary();
         showToast("Build loaded!");
     } catch(e) {
         showToast("Could not load build", true);
@@ -817,7 +864,7 @@ async function loadBuild(id) {
 async function deleteBuild(id) {
     if (!confirm("Delete this build?")) return;
     try {
-        await csrfFetch(`/api/build/${id}`, { method: "DELETE" });
+        await csrfFetch(`/delete_build/${id}`, { method: "POST" });
         loadSavedBuilds();
     } catch(e) {}
 }
