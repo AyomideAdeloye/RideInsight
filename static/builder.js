@@ -184,7 +184,7 @@ function initScene() {
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.outputEncoding = THREE.sRGBEncoding;
     renderer.toneMapping = THREE.LinearToneMapping;
-    renderer.toneMappingExposure = 1.2;
+    renderer.toneMappingExposure = 1.0;
     resizeRenderer();
 
     // Scene — clean studio look
@@ -208,7 +208,7 @@ function initScene() {
     controls.target.set(0, 0.5, 0);
 
     // Studio lights
-    const ambient = new THREE.AmbientLight(0xffffff, 1.2);
+    const ambient = new THREE.AmbientLight(0xffffff, 0.55);
     scene.add(ambient);
 
     // Key light — upper right front
@@ -238,10 +238,10 @@ function initScene() {
     bounce.position.set(0, -4, 6);
     scene.add(bounce);
 
-    // Ground — studio floor
+    // Ground — studio floor (slightly darker than bg for contrast)
     const ground = new THREE.Mesh(
         new THREE.PlaneGeometry(80, 80),
-        new THREE.MeshStandardMaterial({ color: 0xe4e6e9, roughness: 1.0, metalness: 0 })
+        new THREE.MeshStandardMaterial({ color: 0xd9dce0, roughness: 0.95, metalness: 0 })
     );
     ground.rotation.x = -Math.PI / 2;
     ground.receiveShadow = true;
@@ -363,11 +363,11 @@ function loadModel() {
             scene.add(carModel);
             prepMaterials();
 
-            // Fixed 3/4 camera — far enough to see the full car with breathing room
-            controls.target.set(0, 1.1, 0);
-            camera.position.set(5, 2.8, 13);
-            controls.minDistance = 5;
-            controls.maxDistance = 22;
+            // Fixed 3/4 camera — car fills the frame like a configurator
+            controls.target.set(0, 0.9, 0);
+            camera.position.set(4.2, 1.7, 7.5);
+            controls.minDistance = 4;
+            controls.maxDistance = 16;
             controls.update();
 
             // Apply default paint
