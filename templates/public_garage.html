@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="pub-garage-page">
+
+    <div class="pub-garage-header">
+        <a href="/profile/{{ user['username'] }}" class="pub-garage-back">
+            <i data-lucide="arrow-left"></i> Back to profile
+        </a>
+        <div class="pub-garage-title-row">
+            {% if user.get('avatar') %}
+                <img src="{{ user['avatar'] }}" class="pub-garage-avatar">
+            {% else %}
+                <div class="pub-garage-avatar-init">{{ user['username'][0].upper() }}</div>
+            {% endif %}
+            <div>
+                <h2>@{{ user['username'] }}'s Garage</h2>
+                <span class="pub-garage-count">{{ cars_with_mods|length }} vehicle{{ 's' if cars_with_mods|length != 1 else '' }}</span>
+            </div>
+        </div>
+    </div>
+
+    {% if cars_with_mods %}
+    <div class="pub-garage-grid">
+        {% for entry in cars_with_mods %}
+        {% set car = entry['car'] %}
+        {% set mods = entry['mods'] %}
+        {% set total = entry['total'] %}
+        <div class="pub-g-card">
+
+            {% if car['image'] %}
+            <div class="pub-g-img-wrap">
+                <img src="{{ car['image'] }}" class="pub-g-img" loading="lazy">
+            </div>
+            {% else %}
+            <div class="pub-g-img-wrap pub-g-img-placeholder">
+                <i data-lucide="car"></i>
+            </div>
+            {% endif %}
+
+            <div class="pub-g-body">
+                <div class="pub-g-name">{{ car['year'] }} {{ car['make'] }} {{ car['model'] }}</div>
+                {% if car['trim'] %}<div class="pub-g-trim">{{ car['trim'] }}</div>{% endif %}
+                {% if car['notes'] %}<p class="pub-g-notes">{{ car['notes'] }}</p>{% endif %}
+
+                <div class="pub-g-mods-header" onclick="this.nextElementSibling.classList.toggle('open'); this.querySelector('.pub-g-chevron').classList.toggle('flipped')">
+                    <span class="pub-g-mods-label"><i data-lucide="wrench"></i> Mods</span>
+                    <span class="pub-g-mods-count">{{ mods|length }} mod{{ 's' if mods|length != 1 else '' }}</span>
+                    <i data-lucide="chevron-down" class="pub-g-chevron"></i>
+                </div>
+
+                <div class="pub-g-mods-list">
+                    {% if mods %}
+                        {% for mod in mods %}
+                        <div class="pub-g-mod-row">
+                            <div class="pub-g-mod-dot"></div>
+                            <div class="pub-g-mod-info">
+                                <span class="pub-g-mod-name">{{ mod['name'] }}</span>
+                                <span class="pub-g-mod-meta">{{ mod['category'] or '' }}{% if mod['created_at'] %} · {{ mod['created_at'][:10] }}{% endif %}</span>
+                            </div>
+                            <span class="pub-g-mod-cost">${{ '{:,.0f}'.format(mod['cost'] or 0) }}</span>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="pub-g-mods-empty">No mods listed yet.</div>
+                    {% endif %}
+                </div>
+
+                <div class="pub-g-footer">
+                    <span class="pub-g-total-label">Build total</span>
+                    <span class="pub-g-total">${{ '{:,.0f}'.format(total) }}</span>
+                </div>
+            </div>
+
+        </div>
+        {% endfor %}
+    </div>
+
+    {% else %}
+    <div class="pub-garage-empty">
+        <i data-lucide="car"></i>
+        <p>No vehicles in this garage yet.</p>
+    </div>
+    {% endif %}
+
+</div>
+{% endblock %}

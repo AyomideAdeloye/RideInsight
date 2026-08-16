@@ -1,60 +1,193 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>RideInsight</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-</head>
-<body>
+{% extends "base.html" %}
+{% block content %}
+<div class="home-layout">
+    <main class="feed-column">
 
-    <nav class="navbar">
-        <h1 class="logo">RideInsight</h1>
-        <input type="text" class="search-bar" placeholder="Search cars, builds, mods, reviews...">
-        <button class="post-btn" onclick="openPostModal()">Create Post</button>        
-        <button onclick="loadPosts()">Home</button>
-    </nav>
-
-    <div class="page-layout">
-
-        <aside class="left-sidebar">
-            <h3>Menu</h3>
-            <p>Home</p>
-            <p onclick="window.location.href='/garage'">My Garage</p>
-            <p>Compare Vehicles</p>
-            <p>Marketplace</p>
-            <p>Saved Posts</p>
-        </aside>
-
-        <main class="feed" id="feed">
-            <!-- Posts will load here from JavaScript -->
-        </main>
-
-        <aside class="right-sidebar">
-            <h3>Trending</h3>
-            <p>2024 Mustang GT</p>
-            <p>Mazda 6 Mods</p>
-            <p>Best first project cars</p>
-            <p>Affordable motorcycles</p>
-        </aside>
-
-    </div>
-
-
-
-    <div id="postModal" class="modal">
-        <div class="modal-content">
-            <h2>Create Post</h2>
-
-            <input id="username" placeholder="Username">
-            <input id="car" placeholder="Your Car (e.g. 2018 Mazda 6 Touring)">
-            <input id="title" placeholder="Post Title">
-            <textarea id="body" placeholder="Write your post..."></textarea>
-            <input id="image" placeholder="Image URL (paste link)">
-
-            <button onclick="submitPost()">Post</button>
-            <button onclick="closePostModal()">Cancel</button>
+        <!-- Stories Strip -->
+        <div class="stories-strip" id="storiesStrip">
+            <div class="story-bubble-wrap" id="myStoryBubble" onclick="openMyStoryOptions()">
+                <div class="story-bubble own-story">
+                    <div class="story-avatar-ring {% if session.get('username') %}has-story{% endif %}">
+                        {% if session.get('avatar') %}
+                        <img src="{{ session['avatar'] }}" class="story-avatar-img">
+                    {% else %}
+                        <div class="story-avatar-init">{{ session.get('username', '?')[0].upper() if session.get('username') else '+' }}</div>
+                    {% endif %}
+                    </div>
+                    <div class="story-add-badge"><i data-lucide="plus"></i></div>
+                </div>
+                <span class="story-label">Your Story</span>
+            </div>
+            <div id="storyBubbles"></div>
         </div>
-    </div>
-    <script src="{{ url_for('static', filename='script.js') }}"></script>
-</body>
-</html>
+
+        <!-- Story Creator Modal -->
+        <div id="storyCreatorModal" class="story-modal" style="display:none;">
+            <div class="story-modal-box">
+                <div class="story-modal-header">
+                    <strong>New Story</strong>
+                    <button onclick="closeStoryCreator()" class="story-modal-close"><i data-lucide="x"></i></button>
+                </div>
+                <textarea id="storyContentInput" class="composer-field" placeholder="What's happening? Share a quick update…" style="min-height:80px;resize:none;"></textarea>
+                <label class="composer-tool-btn" style="display:inline-flex;align-items:center;gap:6px;margin-top:8px;cursor:pointer;">
+                    <i data-lucide="image"></i> Add Photo
+                    <input type="file" id="storyImageInput" accept="image/*" style="display:none;" onchange="previewStoryImage(this)">
+                </label>
+                <div id="storyImagePreviewWrap" style="display:none;margin-top:8px;position:relative;">
+                    <img id="storyImagePreview" style="max-width:100%;border-radius:8px;max-height:200px;object-fit:cover;">
+                    <button onclick="clearStoryImage()" style="position:absolute;top:4px;right:4px;background:#0009;border:none;color:#fff;border-radius:50%;width:24px;height:24px;cursor:pointer;font-size:14px;">×</button>
+                </div>
+                <div style="display:flex;gap:8px;margin-top:12px;">
+                    <button class="btn btn-ghost" onclick="closeStoryCreator()">Cancel</button>
+                    <button class="btn btn-primary" onclick="submitStory()">Post Story</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Story Viewer Overlay -->
+        <div id="storyViewer" class="story-viewer" style="display:none;" onclick="advanceStory(event)">
+            <div class="story-viewer-progress" id="storyProgress"></div>
+            <div class="story-viewer-header">
+                <div class="story-viewer-user">
+                    <div class="story-viewer-avatar" id="storyViewerAvatar"></div>
+                    <div>
+                        <strong id="storyViewerUsername"></strong>
+                        <span id="storyViewerTime"></span>
+                    </div>
+                </div>
+                <button class="story-viewer-close" onclick="closeStoryViewer(event)"><i data-lucide="x"></i></button>
+            </div>
+            <div class="story-viewer-body" id="storyViewerBody"></div>
+        </div>
+
+        {% if session.get("username") %}
+        <!-- Post Composer -->
+        <div class="post-composer" id="postComposer">
+            <div class="composer-top">
+                {% if session.get('avatar') %}
+                <img src="{{ session['avatar'] }}" class="composer-avatar composer-avatar-img">
+                {% else %}
+                <div class="composer-avatar">{{ session.get("username", "?")[0].upper() }}</div>
+                {% endif %}
+                <div class="composer-input-wrap" onclick="expandComposer()">
+                    <span class="composer-placeholder" id="composerPlaceholder">What's going on today, friend?</span>
+                </div>
+            </div>
+
+            <div class="composer-expanded" id="composerExpanded" style="display:none;">
+                <input id="composerTitle" class="composer-field" placeholder="Title">
+                <textarea id="composerBody" class="composer-textarea" placeholder="What's going on today, friend?" oninput="onComposerInput()"></textarea>
+
+                <!-- Toolbar -->
+                <div class="composer-toolbar">
+                    <div class="composer-tools">
+                        <label class="composer-tool-btn" title="Add photo">
+                            <i data-lucide="image"></i>
+                            <input type="file" id="composerImage" accept="image/*" style="display:none;" onchange="previewComposerImage(this)">
+                        </label>
+                        <label class="composer-tool-btn" title="Add video">
+                            <i data-lucide="video"></i>
+                            <input type="file" id="composerVideo" accept="video/mp4,video/mov,video/webm" style="display:none;" onchange="previewComposerVideo(this)">
+                        </label>
+                        <button class="composer-tool-btn gif-tool-btn" title="Add GIF" onclick="toggleGifPicker()" type="button">GIF</button>
+                        <button class="composer-tool-btn" title="Embed link" onclick="toggleLinkEmbed()" type="button">
+                            <i data-lucide="link"></i>
+                        </button>
+                        <button class="composer-tool-btn" title="Create poll" onclick="togglePollBuilder()" type="button" id="pollToolBtn">
+                            <i data-lucide="bar-chart-2"></i>
+                        </button>
+                    </div>
+                    <div class="composer-actions">
+                        <button class="btn btn-ghost" onclick="collapseComposer()">Cancel</button>
+                        <button class="btn btn-primary" onclick="submitComposerPost()">Post</button>
+                    </div>
+                </div>
+
+                <!-- Image preview -->
+                <div id="composerImagePreview" style="display:none;position:relative;margin-top:10px;">
+                    <img id="composerPreviewImg" class="composer-media-preview">
+                    <button class="remove-preview-btn" onclick="removeComposerImage()"><i data-lucide="x"></i></button>
+                </div>
+
+                <!-- Video preview -->
+                <div id="composerVideoPreview" style="display:none;position:relative;margin-top:10px;">
+                    <video id="composerPreviewVideo" class="composer-media-preview" controls></video>
+                    <button class="remove-preview-btn" onclick="removeComposerVideo()"><i data-lucide="x"></i></button>
+                </div>
+
+                <!-- GIF picker -->
+                <div id="composerGifPicker" style="display:none;margin-top:10px;">
+                    <input id="gifSearchInput" class="composer-field" placeholder="Search GIFs…" oninput="searchGifs(this.value)">
+                    <div id="gifResults" class="gif-grid"></div>
+                </div>
+
+                <!-- GIF preview (outside picker so it stays visible) -->
+                <div id="composerGifPreview" style="display:none;position:relative;margin-top:10px;">
+                    <img id="composerSelectedGif" class="composer-media-preview">
+                    <button class="remove-preview-btn" onclick="removeComposerGif()"><i data-lucide="x"></i></button>
+                </div>
+
+                <!-- Link embed -->
+                <div id="composerLinkEmbed" style="display:none;margin-top:10px;">
+                    <div class="link-input-row">
+                        <input id="linkUrlInput" class="composer-field" placeholder="Paste a URL to embed…" style="flex:1;">
+                        <button class="btn btn-primary" onclick="fetchLinkPreview()" type="button" style="flex-shrink:0;">Preview</button>
+                    </div>
+                    <div id="composerLinkPreview" style="display:none;margin-top:8px;"></div>
+                </div>
+
+                <!-- Poll builder -->
+                <div id="composerPollBuilder" style="display:none;margin-top:12px;">
+                    <div class="poll-builder">
+                        <input id="pollQuestion" class="composer-field" placeholder="Ask a question…" style="margin-bottom:8px;">
+                        <div id="pollOptionsList">
+                            <div class="poll-option-row">
+                                <input class="composer-field poll-option-input" placeholder="Option 1">
+                            </div>
+                            <div class="poll-option-row">
+                                <input class="composer-field poll-option-input" placeholder="Option 2">
+                            </div>
+                        </div>
+                        <button class="poll-add-option-btn" onclick="addPollOption()" type="button">
+                            <i data-lucide="plus"></i> Add option
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Feed -->
+        <div id="feed"></div>
+    </main>
+
+    <aside class="right-sidebar">
+
+        <!-- Weekly Challenge -->
+        <div class="challenge-widget" id="challengeWidget">
+            <div class="challenge-header">
+                <span class="challenge-badge">🔥 Weekly Challenge</span>
+                <span class="challenge-week" id="challengeWeekLabel"></span>
+            </div>
+            <h4 class="challenge-title" id="challengeTitle"></h4>
+            <p class="challenge-desc" id="challengeDesc"></p>
+            {% if session.get("username") %}
+            <button class="btn btn-primary challenge-join-btn" onclick="joinChallenge()" id="challengeJoinBtn">
+                <i data-lucide="zap"></i> Join Challenge
+            </button>
+            {% endif %}
+        </div>
+
+        <div class="trending-header">
+            <h3><i data-lucide="trending-up"></i> Automotive News</h3>
+            <button class="trending-refresh" onclick="loadTrendingNews()" title="Refresh">
+                <i data-lucide="refresh-cw"></i>
+            </button>
+        </div>
+        <div id="trendingNews" class="trending-list">
+            <div class="trending-loading">Loading news…</div>
+        </div>
+    </aside>
+</div>
+{% endblock %}

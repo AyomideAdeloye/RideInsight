@@ -1,0 +1,266 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="explore-page">
+
+    <!-- Header -->
+    <div class="explore-header">
+        <h2><i data-lucide="compass"></i> Explore</h2>
+        <p class="builder-subtitle">Browse posts, search by car, filter by type</p>
+    </div>
+
+    <!-- Search + Filters -->
+    <div class="explore-controls">
+        <div class="explore-search-row">
+            <div class="explore-search-wrap">
+                <i data-lucide="search"></i>
+                <input id="exploreSearch" placeholder="Search posts, cars, users…"
+                       oninput="debounceSearch()" onkeydown="if(event.key==='Enter') runExplore()">
+            </div>
+            <div class="explore-sort">
+                <button class="sort-btn active" id="sort-recent"  onclick="setSort('recent')">
+                    <i data-lucide="clock"></i> Recent
+                </button>
+                <button class="sort-btn" id="sort-popular" onclick="setSort('popular')">
+                    <i data-lucide="flame"></i> Popular
+                </button>
+            </div>
+        </div>
+
+        <!-- Vehicle type filter -->
+        <div class="explore-filters">
+            <span class="filter-label">Type:</span>
+            <button class="filter-chip active" data-type="" onclick="setTypeFilter(this, '')">All</button>
+            <button class="filter-chip" data-type="car" onclick="setTypeFilter(this, 'car')">
+                <i data-lucide="car"></i> Cars
+            </button>
+            <button class="filter-chip" data-type="motorcycle" onclick="setTypeFilter(this, 'motorcycle')">
+                <i data-lucide="bike"></i> Motorcycles
+            </button>
+            <button class="filter-chip" data-type="boat" onclick="setTypeFilter(this, 'boat')">
+                <i data-lucide="sailboat"></i> Boats
+            </button>
+            <button class="filter-chip" data-type="electric" onclick="setTypeFilter(this, 'electric')">
+                <i data-lucide="zap"></i> Electric
+            </button>
+            <button class="filter-chip" data-type="truck" onclick="setTypeFilter(this, 'truck')">
+                <i data-lucide="truck"></i> Trucks
+            </button>
+        </div>
+    </div>
+
+    <div class="explore-layout">
+
+        <!-- Posts feed -->
+        <div class="explore-feed" id="exploreFeed">
+            <div class="explore-loading">
+                <i data-lucide="loader"></i> Loading posts…
+            </div>
+        </div>
+
+        <!-- Right panel: makes + hashtags -->
+        <div class="explore-sidebar">
+
+            <!-- Popular makes -->
+            <div class="explore-sidebar-card">
+                <h4><i data-lucide="car"></i> Popular Makes</h4>
+                <div id="popularMakes" class="makes-list">
+                    <div class="explore-loading"><i data-lucide="loader"></i></div>
+                </div>
+            </div>
+
+            <!-- Trending hashtags -->
+            <div class="explore-sidebar-card">
+                <h4><i data-lucide="hash"></i> Trending Tags</h4>
+                <div id="trendingHashtags" class="hashtag-list">
+                    <div class="explore-loading"><i data-lucide="loader"></i></div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ─── Explore State ────────────────────────────────────────────────
+let _sort       = "recent";
+let _typeFilter = "";
+let _debounce   = null;
+let _activeTag  = "";
+let _activeMake = "";
+
+function esc(s) { return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+function debounceSearch() {
+    clearTimeout(_debounce);
+    _debounce = setTimeout(runExplore, 400);
+}
+
+function setSort(s) {
+    _sort = s;
+    document.querySelectorAll(".sort-btn").forEach(b => b.classList.remove("active"));
+    document.getElementById(`sort-${s}`).classList.add("active");
+    runExplore();
+}
+
+function setTypeFilter(el, type) {
+    _typeFilter = type;
+    _activeMake = "";
+    _activeTag  = "";
+    document.querySelectorAll(".filter-chip").forEach(b => b.classList.remove("active"));
+    el.classList.add("active");
+    runExplore();
+}
+
+function filterByMake(make) {
+    _activeMake = make;
+    _activeTag  = "";
+    _typeFilter = "";
+    document.getElementById("exploreSearch").value = make;
+    document.querySelectorAll(".filter-chip").forEach(b => b.classList.remove("active"));
+    document.querySelector(".filter-chip[data-type='']").classList.add("active");
+    document.querySelectorAll(".make-chip").forEach(b => b.classList.remove("active"));
+    document.querySelector(`[data-make="${esc(make)}"]`)?.classList.add("active");
+    runExplore();
+}
+
+function filterByTag(tag) {
+    _activeTag  = tag;
+    _activeMake = "";
+    _typeFilter = "";
+    document.getElementById("exploreSearch").value = "#" + tag;
+    document.querySelectorAll(".hashtag-chip").forEach(b => b.classList.remove("active"));
+    document.querySelector(`[data-tag="${esc(tag)}"]`)?.classList.add("active");
+    runExplore();
+}
+
+async function runExplore() {
+    const q      = document.getElementById("exploreSearch").value.trim();
+    const params = new URLSearchParams({ sort: _sort });
+    if (q && !_activeTag && !_activeMake)  params.set("q", q);
+    if (_typeFilter) params.set("type",    _typeFilter);
+    if (_activeTag)  params.set("hashtag", _activeTag);
+    if (_activeMake) params.set("make",    _activeMake);
+
+    const feed = document.getElementById("exploreFeed");
+    feed.innerHTML = '<div class="explore-loading"><i data-lucide="loader"></i> Loading…</div>';
+    if (window.refreshIcons) window.refreshIcons();
+
+    const res   = await fetch(`/api/explore?${params}`);
+    const posts = await res.json();
+
+    if (posts.length === 0) {
+        feed.innerHTML = '<div class="explore-empty"><i data-lucide="search-x"></i><p>No posts found</p></div>';
+        if (window.refreshIcons) window.refreshIcons();
+        return;
+    }
+
+    feed.innerHTML = "";
+    posts.forEach(post => {
+        const card = document.createElement("div");
+        card.classList.add("post-card");
+        card.innerHTML = `
+            <div class="post-header">
+                <div class="post-author">
+                    <span class="username" onclick="window.location.href='/profile/${esc(post.username)}'">@${esc(post.username)}</span>
+                    ${post.main_car ? `<span class="post-user-car"><i data-lucide="car"></i>${esc(post.main_car)}</span>` : ""}
+                </div>
+                <span class="time">${esc(post.time)}</span>
+            </div>
+            <h2 class="post-title">${esc(post.title)}</h2>
+            <p class="post-body">${highlightHashtags(esc(post.body || ""))}</p>
+            ${post.image     ? `<img src="${esc(post.image)}" class="post-image" loading="lazy">` : ""}
+            ${post.gif_url   ? `<img src="${esc(post.gif_url)}" class="post-image post-gif" loading="lazy">` : ""}
+            ${post.video_url ? `<video src="${esc(post.video_url)}" class="post-video" controls></video>` : ""}
+            ${post.link_url  ? `<a href="${esc(post.link_url)}" target="_blank" class="post-link-card">
+                ${post.link_image ? `<img src="${esc(post.link_image)}" class="post-link-img" onerror="this.style.display='none'">` : ""}
+                <div class="post-link-body">
+                    <div class="post-link-title">${esc(post.link_title || post.link_url)}</div>
+                    <div class="post-link-url">${esc(post.link_url)}</div>
+                </div>
+            </a>` : ""}
+            <div class="post-actions">
+                <div class="vote-buttons">
+                    <button class="like-btn ${post.user_liked ? 'active' : ''}" id="like-btn-${post.id}" onclick="likePost(${post.id})">
+                        <i data-lucide="thumbs-up"></i> ${post.likes || 0}
+                    </button>
+                    <button class="dislike-btn ${post.user_disliked ? 'active' : ''}" id="dislike-btn-${post.id}" onclick="dislikePost(${post.id})">
+                        <i data-lucide="thumbs-down"></i> ${post.dislikes || 0}
+                    </button>
+                </div>
+                <button onclick="window.location.href='/?post=${post.id}'">
+                    <i data-lucide="message-circle"></i>
+                    ${post.comment_count > 0 ? post.comment_count + ' ' : ''}Comment${post.comment_count !== 1 ? 's' : ''}
+                </button>
+            </div>
+        `;
+        feed.appendChild(card);
+    });
+    if (window.refreshIcons) window.refreshIcons();
+}
+
+function highlightHashtags(text) {
+    return text.replace(/#(\w+)/g, `<span class="hashtag-highlight" onclick="filterByTag('$1')">#$1</span>`);
+}
+
+async function loadPopularMakes() {
+    const res   = await fetch("/api/popular_makes");
+    const makes = await res.json();
+    const el    = document.getElementById("popularMakes");
+    if (!makes.length) { el.innerHTML = "<p class='explore-empty-small'>No posts yet</p>"; return; }
+    el.innerHTML = makes.map(m => `
+        <button class="make-chip" data-make="${esc(m.car)}" onclick="filterByMake('${esc(m.car)}')">
+            <i data-lucide="car"></i> ${esc(m.car)}
+            <span class="chip-count">${m.count}</span>
+        </button>
+    `).join("");
+    if (window.refreshIcons) window.refreshIcons();
+}
+
+async function loadTrendingHashtags() {
+    const res  = await fetch("/api/trending_hashtags");
+    const tags = await res.json();
+    const el   = document.getElementById("trendingHashtags");
+    if (!tags.length) { el.innerHTML = "<p class='explore-empty-small'>No hashtags yet — add some to your posts!</p>"; return; }
+    el.innerHTML = tags.map(t => `
+        <button class="hashtag-chip" data-tag="${esc(t.tag)}" onclick="filterByTag('${esc(t.tag)}')">
+            #${esc(t.tag)} <span class="chip-count">${t.count}</span>
+        </button>
+    `).join("");
+    if (window.refreshIcons) window.refreshIcons();
+}
+
+// ─── Reuse like/dislike from script.js ───────────────────────────
+async function likePost(postId) {
+    await fetch(`/like_post/${postId}`, { method: "POST", headers: {"X-CSRFToken": document.querySelector('meta[name="csrf-token"]')?.content} });
+    await refreshPostCounts(postId);
+}
+async function dislikePost(postId) {
+    await fetch(`/dislike_post/${postId}`, { method: "POST", headers: {"X-CSRFToken": document.querySelector('meta[name="csrf-token"]')?.content} });
+    await refreshPostCounts(postId);
+}
+async function refreshPostCounts(postId) {
+    const res  = await fetch(`/get_post_counts/${postId}`);
+    const data = await res.json();
+    const lb   = document.getElementById(`like-btn-${postId}`);
+    const db   = document.getElementById(`dislike-btn-${postId}`);
+    if (lb) { lb.innerHTML = `<i data-lucide="thumbs-up"></i> ${data.likes}`; lb.classList.toggle("active", !!data.user_liked); }
+    if (db) { db.innerHTML = `<i data-lucide="thumbs-down"></i> ${data.dislikes}`; db.classList.toggle("active", !!data.user_disliked); }
+    if (window.refreshIcons) window.refreshIcons();
+}
+
+// ─── Init ─────────────────────────────────────────────────────────
+document.addEventListener("DOMContentLoaded", () => {
+    runExplore();
+    loadPopularMakes();
+    loadTrendingHashtags();
+
+    // Check if coming from a hashtag or make link
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("hashtag")) filterByTag(params.get("hashtag"));
+    if (params.get("make"))    filterByMake(params.get("make"));
+    if (params.get("q"))       { document.getElementById("exploreSearch").value = params.get("q"); runExplore(); }
+});
+</script>
+{% endblock %}

@@ -1,0 +1,203 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="meets-page">
+
+    <div class="meets-hero">
+        <i data-lucide="calendar-days"></i>
+        <h1>Car Meets</h1>
+        <p>Find local meetups, cruises, and car shows near you</p>
+        {% if session.get("username") %}
+        <button class="btn btn-primary" onclick="openCreateMeet()" style="margin-top:16px;">
+            <i data-lucide="plus"></i> Host a Meet
+        </button>
+        {% endif %}
+    </div>
+
+    <!-- Filters -->
+    <div class="meets-filters">
+        <button class="meets-filter-btn active" data-filter="upcoming" onclick="setFilter('upcoming', this)">Upcoming</button>
+        <button class="meets-filter-btn" data-filter="all" onclick="setFilter('all', this)">All</button>
+        <button class="meets-filter-btn" data-filter="mine" onclick="setFilter('mine', this)">Going</button>
+    </div>
+
+    <div class="meets-grid" id="meetsGrid">
+        <div class="lb-loading">Loading meets…</div>
+    </div>
+
+</div>
+
+<!-- Create Meet Modal -->
+<div id="createMeetModal" class="meet-modal-overlay" style="display:none;" onclick="closeMeetModalOutside(event)">
+    <div class="meet-modal-box">
+        <div class="meet-modal-header">
+            <strong>Host a Meet</strong>
+            <button onclick="closeCreateMeet()" class="story-modal-close"><i data-lucide="x"></i></button>
+        </div>
+        <input id="meetTitle" class="composer-field" placeholder="Meet name / event title" style="margin-bottom:8px;">
+        <textarea id="meetDescription" class="composer-field" placeholder="What's the vibe? Details, car types welcome, etc." style="min-height:80px;resize:none;margin-bottom:8px;"></textarea>
+        <input id="meetLocation" class="composer-field" placeholder="Location (e.g. Downtown LA, Exit 12 Parking Lot)" style="margin-bottom:8px;">
+        <div style="display:flex;gap:8px;margin-bottom:8px;">
+            <input id="meetDate" class="composer-field" type="date" style="flex:1;">
+            <input id="meetTime" class="composer-field" type="time" style="flex:1;">
+        </div>
+        <label class="composer-tool-btn" style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;margin-bottom:12px;">
+            <i data-lucide="image"></i> Add Photo
+            <input type="file" id="meetImageInput" accept="image/*" style="display:none;" onchange="previewMeetImage(this)">
+        </label>
+        <div id="meetImagePreviewWrap" style="display:none;margin-bottom:12px;position:relative;">
+            <img id="meetImagePreview" style="max-width:100%;border-radius:8px;max-height:180px;object-fit:cover;">
+            <button onclick="clearMeetImage()" style="position:absolute;top:4px;right:4px;background:#0009;border:none;color:#fff;border-radius:50%;width:24px;height:24px;cursor:pointer;font-size:14px;">×</button>
+        </div>
+        <div style="display:flex;gap:8px;">
+            <button class="btn btn-ghost" onclick="closeCreateMeet()">Cancel</button>
+            <button class="btn btn-primary" onclick="submitMeet()">Post Meet</button>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let _allMeets = [];
+let _activeFilter = 'upcoming';
+const _loggedIn = {{ 'true' if session.get('username') else 'false' }};
+const _myUsername = {{ ('"' + session.get('username') + '"') | safe if session.get('username') else 'null' }};
+
+async function loadMeets() {
+    const res  = await fetch('/api/meets');
+    _allMeets  = await res.json();
+    renderMeets();
+}
+
+function setFilter(f, btn) {
+    _activeFilter = f;
+    document.querySelectorAll('.meets-filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    renderMeets();
+}
+
+function renderMeets() {
+    const today = new Date().toISOString().slice(0,10);
+    let list = _allMeets;
+    if (_activeFilter === 'upcoming') {
+        list = list.filter(m => !m.meet_date || m.meet_date >= today);
+    } else if (_activeFilter === 'mine') {
+        list = list.filter(m => m.user_rsvpd);
+    }
+
+    const grid = document.getElementById('meetsGrid');
+    if (!list.length) {
+        grid.innerHTML = `<div class="lb-empty" style="grid-column:1/-1;">No meets yet${_activeFilter === 'mine' ? ' — RSVP to one first!' : ' — be the first to host one!'}</div>`;
+        return;
+    }
+
+    grid.innerHTML = list.map(m => `
+        <div class="meet-card" id="meet-card-${m.id}">
+            ${m.image ? `<img src="${m.image}" class="meet-card-img" loading="lazy">` : `<div class="meet-card-img-placeholder"><i data-lucide="map-pin"></i></div>`}
+            <div class="meet-card-body">
+                <div class="meet-card-meta">
+                    ${m.meet_date ? `<span class="meet-date-badge">${formatDate(m.meet_date)}${m.meet_time ? ' · ' + formatTime(m.meet_time) : ''}</span>` : ''}
+                    ${m.location ? `<span class="meet-location"><i data-lucide="map-pin"></i> ${escHtml(m.location)}</span>` : ''}
+                </div>
+                <h3 class="meet-card-title">${escHtml(m.title)}</h3>
+                ${m.description ? `<p class="meet-card-desc">${escHtml(m.description)}</p>` : ''}
+                <div class="meet-card-footer">
+                    <span class="meet-host">by @${escHtml(m.username)}</span>
+                    <div class="meet-card-actions">
+                        <span class="meet-rsvp-count" id="meet-rsvp-count-${m.id}">
+                            <i data-lucide="users"></i> ${m.rsvp_count} going
+                        </span>
+                        ${_loggedIn ? `<button class="meet-rsvp-btn ${m.user_rsvpd ? 'rsvpd' : ''}" id="meet-rsvp-btn-${m.id}" onclick="toggleRsvp(${m.id})">
+                            ${m.user_rsvpd ? '✓ Going' : 'RSVP'}
+                        </button>` : ''}
+                    </div>
+                </div>
+            </div>
+        </div>
+    `).join('');
+    if (window.lucide) lucide.createIcons();
+}
+
+function formatDate(d) {
+    if (!d) return '';
+    const dt = new Date(d + 'T12:00:00');
+    return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function formatTime(t) {
+    if (!t) return '';
+    const [h, m] = t.split(':').map(Number);
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    const hour = ((h % 12) || 12);
+    return `${hour}:${String(m).padStart(2,'0')} ${ampm}`;
+}
+
+function escHtml(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+async function toggleRsvp(meetId) {
+    const btn = document.getElementById(`meet-rsvp-btn-${meetId}`);
+    btn.disabled = true;
+    const res  = await fetch(`/api/meets/rsvp/${meetId}`, { method: 'POST' });
+    const data = await res.json();
+    const going = data.action === 'added';
+    btn.textContent    = going ? '✓ Going' : 'RSVP';
+    btn.className      = 'meet-rsvp-btn' + (going ? ' rsvpd' : '');
+    btn.disabled       = false;
+    document.getElementById(`meet-rsvp-count-${meetId}`).innerHTML = `<i data-lucide="users"></i> ${data.rsvp_count} going`;
+    if (window.lucide) lucide.createIcons();
+    // Update local data
+    const meet = _allMeets.find(m => m.id === meetId);
+    if (meet) { meet.user_rsvpd = going ? 1 : 0; meet.rsvp_count = data.rsvp_count; }
+}
+
+// Create meet
+function openCreateMeet() {
+    document.getElementById('createMeetModal').style.display = 'flex';
+}
+function closeCreateMeet() {
+    document.getElementById('createMeetModal').style.display = 'none';
+}
+function closeMeetModalOutside(e) {
+    if (e.target === document.getElementById('createMeetModal')) closeCreateMeet();
+}
+function previewMeetImage(input) {
+    if (!input.files[0]) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+        document.getElementById('meetImagePreview').src = e.target.result;
+        document.getElementById('meetImagePreviewWrap').style.display = 'block';
+    };
+    reader.readAsDataURL(input.files[0]);
+}
+function clearMeetImage() {
+    document.getElementById('meetImageInput').value = '';
+    document.getElementById('meetImagePreviewWrap').style.display = 'none';
+}
+async function submitMeet() {
+    const title = document.getElementById('meetTitle').value.trim();
+    const date  = document.getElementById('meetDate').value;
+    if (!title || !date) { alert('Title and date are required.'); return; }
+    const fd = new FormData();
+    fd.append('title',       title);
+    fd.append('description', document.getElementById('meetDescription').value.trim());
+    fd.append('location',    document.getElementById('meetLocation').value.trim());
+    fd.append('meet_date',   date);
+    fd.append('meet_time',   document.getElementById('meetTime').value);
+    const imgFile = document.getElementById('meetImageInput').files[0];
+    if (imgFile) fd.append('image', imgFile);
+    const res = await fetch('/api/meets/create', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (data.error) { alert(data.error); return; }
+    closeCreateMeet();
+    // Reset form
+    ['meetTitle','meetDescription','meetLocation','meetDate','meetTime'].forEach(id => document.getElementById(id).value = '');
+    clearMeetImage();
+    loadMeets();
+}
+
+loadMeets();
+</script>
+{% endblock %}

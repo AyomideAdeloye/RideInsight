@@ -1,0 +1,382 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="profile-container">
+
+    <!-- Cover Photo -->
+    <div class="profile-cover" id="profileCover"
+         style="{% if user.get('cover_photo') %}background-image:url('{{ user['cover_photo'] }}');background-size:cover;background-position:center;{% else %}background:#b0b0b0;{% endif %}">
+        {% if is_own_profile %}
+        <div class="cover-actions">
+            <label class="cover-upload-btn" title="Change cover photo">
+                <i data-lucide="camera"></i> Change Cover
+                <input type="file" id="coverInput" accept="image/*" style="display:none" onchange="uploadCover(this)">
+            </label>
+            {% if user.get('cover_photo') %}
+            <button class="cover-remove-btn" id="coverRemoveBtn" onclick="removeCover()" title="Remove cover photo">
+                <i data-lucide="x"></i> Remove
+            </button>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="profile-header">
+
+        <!-- Avatar -->
+        <div class="profile-avatar-wrap">
+            {% if user.get("avatar") %}
+                <img src="{{ user['avatar'] }}" class="profile-avatar-img" id="avatarImg">
+            {% else %}
+                <div class="profile-avatar" id="avatarPlaceholder">{{ user["username"][0].upper() }}</div>
+            {% endif %}
+            {% if is_own_profile %}
+            <label class="avatar-upload-btn" title="Change photo">
+                <i data-lucide="camera"></i>
+                <input type="file" id="avatarInput" accept="image/*" style="display:none" onchange="uploadAvatar(this)">
+            </label>
+            {% endif %}
+        </div>
+
+        <!-- Info -->
+        <div class="profile-info">
+            <div class="profile-name-row">
+                <h2>@{{ user["username"] }}</h2>
+                {% if user.get("main_car") %}
+                <span class="profile-car-inline"><i data-lucide="car"></i> {{ user["main_car"] }}</span>
+                {% endif %}
+            </div>
+
+            {% if is_own_profile %}
+            <div class="profile-bio-wrap" id="profileBioWrap">
+                <p class="profile-bio" id="profileBioText" onclick="startEditBio()" title="Click to edit bio">{{ user.get('bio') or 'Add a bio…' }}</p>
+            </div>
+            {% elif user.get('bio') %}
+            <p class="profile-bio">{{ user['bio'] }}</p>
+            {% endif %}
+
+            <div class="follow-stats">
+                <span><strong>{{ follower_count }}</strong> followers</span>
+                <span><strong>{{ following_count }}</strong> following</span>
+            </div>
+            <div class="profile-badges" id="profileBadges"></div>
+        </div>
+
+        {% if not is_own_profile %}
+        <div class="profile-actions">
+            <button class="follow-btn {{ 'following' if is_following else 'follow' }}"
+                    id="followBtn" onclick="toggleFollow({{ user['id'] }})">
+                {{ "Following" if is_following else "Follow" }}
+            </button>
+            <a href="/messages/{{ user['username'] }}" class="btn btn-ghost">
+                <i data-lucide="message-square"></i> Message
+            </a>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Profile Tabs -->
+    <div class="profile-tabs">
+        <button class="profile-tab active" onclick="showProfileTab('all', this)">All</button>
+        <button class="profile-tab" onclick="showProfileTab('posts', this)">Posts</button>
+        <button class="profile-tab" onclick="showProfileTab('comments', this)">Comments</button>
+        <button class="profile-tab" onclick="showProfileTab('garage', this)">Garage</button>
+
+        <div class="profile-tab-menu-wrap">
+            <button class="profile-tab-dots" onclick="toggleProfileMenu(event)" aria-label="More options">
+                <i data-lucide="more-horizontal"></i>
+            </button>
+            <div class="profile-tab-dropdown" id="profileTabMenu">
+                {% if not is_own_profile %}
+                <a class="ptd-item" href="/messages/{{ user['username'] }}">
+                    <i data-lucide="message-square"></i> Message
+                </a>
+                {% endif %}
+                <button class="ptd-item" onclick="shareProfile()">
+                    <i data-lucide="share-2"></i> Share
+                </button>
+                {% if not is_own_profile %}
+                <button class="ptd-item" onclick="blockUser('{{ user['username'] }}')">
+                    <i data-lucide="ban"></i> Block user
+                </button>
+                <button class="ptd-item ptd-danger" onclick="reportProfile('{{ user['username'] }}')">
+                    <i data-lucide="flag"></i> Report profile
+                </button>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- ALL panel -->
+    <div class="profile-panel active" id="panel-all">
+        <div class="feed">
+            {% for post in posts %}
+            <div class="post-card" onclick="window.location.href='/post/{{ post['id'] }}'" style="cursor:pointer;">
+                <div class="post-header">
+                    <span class="username">@{{ post["username"] }}</span>
+                    <span class="user-car">{{ post["car"] }}</span>
+                </div>
+                <h2 class="post-title">{{ post["title"] }}</h2>
+                <p class="post-body">{{ post["body"] }}</p>
+                {% if post["image"] %}
+                <img src="{{ post['image'] }}" class="post-image" loading="lazy">
+                {% endif %}
+            </div>
+            {% else %}
+            <p class="profile-empty-state">No activity yet.</p>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- POSTS panel -->
+    <div class="profile-panel" id="panel-posts">
+        <div class="feed">
+            {% for post in posts %}
+            <div class="post-card" onclick="window.location.href='/post/{{ post['id'] }}'" style="cursor:pointer;">
+                <div class="post-header">
+                    <span class="username">@{{ post["username"] }}</span>
+                    <span class="user-car">{{ post["car"] }}</span>
+                </div>
+                <h2 class="post-title">{{ post["title"] }}</h2>
+                <p class="post-body">{{ post["body"] }}</p>
+                {% if post["image"] %}
+                <img src="{{ post['image'] }}" class="post-image" loading="lazy">
+                {% endif %}
+            </div>
+            {% else %}
+            <p class="profile-empty-state">No posts yet.</p>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- COMMENTS panel -->
+    <div class="profile-panel" id="panel-comments">
+        {% for c in comments %}
+        <div class="profile-comment-card" onclick="window.location.href='/post/{{ c['post_id'] }}'" style="cursor:pointer;">
+            <div class="pcc-context">
+                <i data-lucide="corner-down-right"></i>
+                Replied on <strong>{{ c["post_title"] or "a post" }}</strong>
+            </div>
+            <p class="pcc-body">{{ c["body"] }}</p>
+            <div class="pcc-meta">
+                {% if c["created_at"] %}<span>{{ c["created_at"][:10] }}</span>{% endif %}
+                {% if c["likes"] %}<span><i data-lucide="heart"></i> {{ c["likes"] }}</span>{% endif %}
+            </div>
+        </div>
+        {% else %}
+        <p class="profile-empty-state">No comments yet.</p>
+        {% endfor %}
+    </div>
+
+    <!-- GARAGE panel -->
+    <div class="profile-panel" id="panel-garage">
+        {% if cars %}
+        <a href="/garage/{{ user['username'] }}" class="pgc-view-all">
+            <i data-lucide="car"></i> View full garage &amp; mods
+        </a>
+        <div class="profile-garage-grid">
+            {% for car in cars %}
+            <div class="profile-garage-card" onclick="window.location.href='/garage/{{ user['username'] }}'" style="cursor:pointer;">
+                {% if car["image"] %}
+                <div class="pgc-img-wrap"><img src="{{ car['image'] }}" class="pgc-img" loading="lazy"></div>
+                {% else %}
+                <div class="pgc-img-wrap pgc-img-placeholder"><i data-lucide="car"></i></div>
+                {% endif %}
+                <div class="pgc-body">
+                    <span class="pgc-name">{{ car["year"] }} {{ car["make"] }} {{ car["model"] }}</span>
+                    {% if car["trim"] %}<span class="pgc-trim">{{ car["trim"] }}</span>{% endif %}
+                    {% if car["notes"] %}<p class="pgc-notes">{{ car["notes"] }}</p>{% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="profile-empty-state">No vehicles in garage yet.</p>
+        {% endif %}
+    </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Three-dot menu
+function toggleProfileMenu(e) {
+    e.stopPropagation();
+    document.getElementById('profileTabMenu').classList.toggle('open');
+}
+document.addEventListener('click', () => {
+    document.getElementById('profileTabMenu')?.classList.remove('open');
+});
+
+function shareProfile() {
+    const url = window.location.href;
+    if (navigator.share) {
+        navigator.share({ title: '@{{ user["username"] }} on RideInsight', url });
+    } else {
+        navigator.clipboard.writeText(url).then(() => alert('Profile link copied!'));
+    }
+    document.getElementById('profileTabMenu').classList.remove('open');
+}
+
+function blockUser(username) {
+    if (!confirm(`Block @${username}? You won't see their content and they won't see yours.`)) return;
+    fetch(`/api/block/${username}`, { method: 'POST' })
+        .then(r => r.json())
+        .then(d => { if (d.message) alert(d.message); else alert(d.error || 'Could not block.'); });
+    document.getElementById('profileTabMenu').classList.remove('open');
+}
+
+function reportProfile(username) {
+    const reason = prompt(`Why are you reporting @${username}?\n\nExamples: spam, harassment, fake account, inappropriate content`);
+    if (!reason) return;
+    fetch(`/api/report/${username}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason })
+    }).then(() => alert('Report submitted. Our team will review it.'));
+    document.getElementById('profileTabMenu').classList.remove('open');
+}
+
+// Profile tabs
+function showProfileTab(tab, btn) {
+    document.querySelectorAll('.profile-tab').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.profile-panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('panel-' + tab).classList.add('active');
+}
+
+// Bio inline editing
+function startEditBio() {
+    const wrap    = document.getElementById('profileBioWrap');
+    const current = document.getElementById('profileBioText').textContent.trim();
+    const isPlaceholder = current === 'Add a bio…';
+    wrap.innerHTML = `
+        <textarea id="bioEditor" class="bio-editor" maxlength="300"
+            placeholder="Tell people about yourself and your cars…">${isPlaceholder ? '' : current}</textarea>
+        <div class="bio-edit-actions">
+            <span class="bio-char-count" id="bioCharCount">${isPlaceholder ? 0 : current.length}/300</span>
+            <button class="btn btn-ghost" onclick="cancelEditBio('${isPlaceholder ? '' : current.replace(/'/g,"\\'")}')">Cancel</button>
+            <button class="btn btn-primary" onclick="saveBio()">Save</button>
+        </div>
+    `;
+    const ta = document.getElementById('bioEditor');
+    ta.focus();
+    ta.addEventListener('input', () => {
+        document.getElementById('bioCharCount').textContent = ta.value.length + '/300';
+    });
+}
+
+function cancelEditBio(original) {
+    const wrap = document.getElementById('profileBioWrap');
+    wrap.innerHTML = `<p class="profile-bio" id="profileBioText" onclick="startEditBio()" title="Click to edit bio">${original || 'Add a bio…'}</p>`;
+}
+
+async function saveBio() {
+    const bio = document.getElementById('bioEditor').value.trim();
+    const res  = await fetch('/update_bio', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bio })
+    });
+    const data = await res.json();
+    if (data.error) { alert(data.error); return; }
+    const wrap = document.getElementById('profileBioWrap');
+    wrap.innerHTML = `<p class="profile-bio" id="profileBioText" onclick="startEditBio()" title="Click to edit bio">${data.bio || 'Add a bio…'}</p>`;
+}
+
+// Load badges
+(async () => {
+    const res    = await fetch('/api/badges/{{ user["username"] }}');
+    const badges = await res.json();
+    const wrap   = document.getElementById('profileBadges');
+    if (!wrap) return;
+    if (!badges.length) { wrap.style.display = 'none'; return; }
+    wrap.innerHTML = badges.map(b => `
+        <div class="profile-badge" style="--badge-color:${b.color};" title="${b.desc}">
+            <span class="badge-icon">${b.icon}</span>
+            <span class="badge-name">${b.name}</span>
+        </div>
+    `).join('');
+})();
+
+async function toggleFollow(targetId) {
+    const res  = await fetch(`/follow/${targetId}`, { method: "POST" });
+    const data = await res.json();
+    if (data.error) { alert(data.error); return; }
+    const btn = document.getElementById("followBtn");
+    if (data.action === "followed") {
+        btn.textContent = "Following";
+        btn.className = "follow-btn following";
+    } else {
+        btn.textContent = "Follow";
+        btn.className = "follow-btn follow";
+    }
+    document.querySelector(".follow-stats span strong").textContent = data.follower_count;
+}
+
+async function uploadCover(input) {
+    if (!input.files[0]) return;
+    const formData = new FormData();
+    formData.append("cover", input.files[0]);
+    const res  = await fetch("/upload_cover", { method: "POST", body: formData });
+    const data = await res.json();
+    if (data.url) {
+        const cover = document.getElementById("profileCover");
+        cover.style.backgroundImage = `url('${data.url}')`;
+        cover.style.backgroundSize = "cover";
+        cover.style.backgroundPosition = "center";
+        // Show remove button if not already present
+        if (!document.getElementById("coverRemoveBtn")) {
+            const btn = document.createElement("button");
+            btn.className = "cover-remove-btn";
+            btn.id = "coverRemoveBtn";
+            btn.title = "Remove cover photo";
+            btn.innerHTML = '<i data-lucide="x"></i> Remove';
+            btn.onclick = removeCover;
+            document.querySelector(".cover-actions").appendChild(btn);
+            if (window.lucide) lucide.createIcons();
+        }
+    } else {
+        alert("Upload failed — " + (data.error || "unknown error"));
+    }
+}
+
+async function removeCover() {
+    const res  = await fetch("/remove_cover", { method: "POST" });
+    const data = await res.json();
+    if (data.message) {
+        const cover = document.getElementById("profileCover");
+        cover.style.backgroundImage = "";
+        cover.style.background = "#b0b0b0";
+        const btn = document.getElementById("coverRemoveBtn");
+        if (btn) btn.remove();
+    } else {
+        alert("Failed — " + (data.error || "unknown error"));
+    }
+}
+
+async function uploadAvatar(input) {
+    if (!input.files[0]) return;
+    const formData = new FormData();
+    formData.append("avatar", input.files[0]);
+
+    const res  = await fetch("/upload_avatar", { method: "POST", body: formData });
+    const data = await res.json();
+
+    if (data.url) {
+        // Replace placeholder or existing image
+        const wrap = document.querySelector(".profile-avatar-wrap");
+        const existing = wrap.querySelector(".profile-avatar-img, .profile-avatar");
+        if (existing) existing.remove();
+        const img = document.createElement("img");
+        img.src = data.url;
+        img.className = "profile-avatar-img";
+        img.id = "avatarImg";
+        wrap.insertBefore(img, wrap.querySelector(".avatar-upload-btn"));
+    } else {
+        alert("Upload failed — " + (data.error || "unknown error"));
+    }
+}
+</script>
+{% endblock %}

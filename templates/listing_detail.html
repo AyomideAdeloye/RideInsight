@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="listing-detail-page">
+    <div class="listing-detail-layout">
+
+        <!-- Images -->
+        <div class="listing-gallery" id="listingGallery">
+            <div class="explore-loading"><i data-lucide="loader"></i></div>
+        </div>
+
+        <!-- Info panel -->
+        <div class="listing-info-panel" id="listingInfo">
+            <div class="explore-loading"><i data-lucide="loader"></i></div>
+        </div>
+
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const LISTING_ID = {{ listing.id }};
+function esc(s) { return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+function csrfFetch(url, opts={}) {
+    const token = document.querySelector('meta[name="csrf-token"]')?.content;
+    return fetch(url, {...opts, headers:{...(opts.headers||{}), ...(token?{"X-CSRFToken":token}:{})}});
+}
+
+const CONDITION_LABELS = {new:"New",like_new:"Like New",good:"Good",fair:"Fair",parts_only:"Parts Only"};
+
+async function loadListing() {
+    const res  = await fetch(`/api/listings/${LISTING_ID}`);
+    const l    = await res.json();
+
+    // Gallery
+    const gallery = document.getElementById("listingGallery");
+    if (l.images && l.images.length) {
+        gallery.innerHTML = `
+            <img id="mainImg" src="${esc(l.images[0])}" class="listing-main-img">
+            ${l.images.length > 1 ? `<div class="listing-thumbs">
+                ${l.images.map((img, i) => `<img src="${esc(img)}" class="listing-thumb ${i===0?'active':''}" onclick="setMainImg('${esc(img)}', this)">`).join("")}
+            </div>` : ""}
+        `;
+    } else {
+        gallery.innerHTML = `<div class="listing-no-img large"><i data-lucide="image-off"></i><p>No photos</p></div>`;
+    }
+
+    const sold = l.status === "sold";
+
+    // Info panel
+    document.getElementById("listingInfo").innerHTML = `
+        <div class="listing-detail-header">
+            <h2>${esc(l.title)}</h2>
+            <div class="listing-detail-price">$${Number(l.price).toLocaleString()}${sold ? ' <span class="sold-badge">SOLD</span>' : ""}</div>
+        </div>
+
+        <div class="listing-detail-tags">
+            <span class="listing-cat-badge"><i data-lucide="${getCatIcon(l.category)}"></i>${esc(l.category)}</span>
+            <span class="listing-cond">${CONDITION_LABELS[l.condition] || l.condition}</span>
+            ${l.location ? `<span class="listing-loc"><i data-lucide="map-pin"></i>${esc(l.location)}</span>` : ""}
+        </div>
+
+        ${l.description ? `<div class="listing-description">${esc(l.description).replace(/\n/g,'<br>')}</div>` : ""}
+
+        <div class="listing-seller-card">
+            <div class="listing-seller-info">
+                <div class="listing-seller-avatar">${esc(l.username[0].toUpperCase())}</div>
+                <div>
+                    <a href="/profile/${esc(l.username)}" class="listing-seller-name">@${esc(l.username)}</a>
+                    <div style="font-size:12px;color:var(--text-muted);">Listed ${esc(l.created_at ? l.created_at.slice(0,10) : "")}</div>
+                </div>
+            </div>
+            ${!sold ? `
+            <div class="listing-seller-actions">
+                <a href="/messages/${esc(l.username)}" class="btn btn-primary">
+                    <i data-lucide="message-square"></i> Message Seller
+                </a>
+                <button class="btn btn-ghost ${l.is_saved?'saved':''}" id="saveBtn" onclick="toggleSave()">
+                    <i data-lucide="${l.is_saved?'bookmark-check':'bookmark'}"></i>
+                    ${l.is_saved ? "Saved" : "Save"}
+                </button>
+            </div>` : ""}
+        </div>
+
+        <a class="back-link" href="/theshop"><i data-lucide="arrow-left"></i> Back to theshop</a>
+    `;
+    if (window.refreshIcons) window.refreshIcons();
+}
+
+function getCatIcon(cat) {
+    return {vehicle:"car",parts:"wrench",wheels:"disc",electronics:"cpu",accessories:"package",apparel:"shirt"}[cat] || "package";
+}
+
+function setMainImg(src, el) {
+    document.getElementById("mainImg").src = src;
+    document.querySelectorAll(".listing-thumb").forEach(t => t.classList.remove("active"));
+    el.classList.add("active");
+}
+
+async function toggleSave() {
+    const res  = await csrfFetch(`/api/listings/${LISTING_ID}/save`, { method: "POST" });
+    const data = await res.json();
+    const btn  = document.getElementById("saveBtn");
+    btn.className = `btn btn-ghost ${data.saved?'saved':''}`;
+    btn.innerHTML = `<i data-lucide="${data.saved?'bookmark-check':'bookmark'}"></i> ${data.saved?'Saved':'Save'}`;
+    if (window.refreshIcons) window.refreshIcons();
+}
+
+document.addEventListener("DOMContentLoaded", loadListing);
+</script>
+{% endblock %}

@@ -1,0 +1,195 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="clubs-page">
+    <div class="clubs-header">
+        <div>
+            <h2><i data-lucide="users"></i> Car Clubs</h2>
+            <p class="builder-subtitle">Join communities around your favorite makes and models</p>
+        </div>
+        <button class="btn btn-primary" onclick="openCreateClub()">
+            <i data-lucide="plus"></i> Create Club
+        </button>
+    </div>
+
+    <div class="clubs-section" id="myClubsSection" style="display:none;">
+        <h3 class="clubs-section-title"><i data-lucide="star"></i> My Clubs</h3>
+        <div class="clubs-grid" id="myClubs"></div>
+    </div>
+
+    <div class="clubs-controls">
+        <div class="explore-search-wrap" style="max-width:360px;">
+            <i data-lucide="search"></i>
+            <input id="clubSearch" placeholder="Search clubs…" oninput="debounceClubs()">
+        </div>
+        <div class="explore-sort">
+            <button class="sort-btn active" id="sort-members" onclick="setClubSort('members')">
+                <i data-lucide="users"></i> Popular
+            </button>
+            <button class="sort-btn" id="sort-new" onclick="setClubSort('new')">
+                <i data-lucide="clock"></i> New
+            </button>
+        </div>
+    </div>
+
+    <h3 class="clubs-section-title"><i data-lucide="grid"></i> All Clubs</h3>
+    <div class="clubs-grid" id="allClubs">
+        <div class="clubs-loading"><i data-lucide="loader"></i> Loading clubs…</div>
+    </div>
+</div>
+
+<!-- Create Club Modal -->
+<div class="modal-overlay" id="createClubModal" style="display:none;">
+    <div class="modal-box">
+        <h3><i data-lucide="plus-circle"></i> Create a Club</h3>
+        <label>Club Name *</label>
+        <input type="text" id="clubName" placeholder="e.g. Mazda Crew, JDM Kings…">
+        <label>Description</label>
+        <textarea id="clubDesc" placeholder="What's this club about?" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;resize:vertical;min-height:80px;font-size:14px;background:var(--bg);color:var(--text);outline:none;margin-bottom:4px;"></textarea>
+        <label>Car Make (optional)</label>
+        <input type="text" id="clubMake" placeholder="e.g. Honda, Toyota, BMW…">
+        <div class="settings-msg" id="createClubMsg" style="display:none;"></div>
+        <div class="modal-actions">
+            <button class="btn btn-ghost" onclick="closeCreateClub()">Cancel</button>
+            <button class="btn btn-primary" onclick="submitCreateClub()">Create Club</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let _clubSort  = "members";
+let _clubDelay = null;
+
+function esc(s) { return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+function csrfFetch(url, opts={}) {
+    const token = document.querySelector('meta[name="csrf-token"]')?.content;
+    return fetch(url, {...opts, headers:{...(opts.headers||{}), ...(token?{"X-CSRFToken":token}:{})}});
+}
+
+// ─── Car logo lookup via carlogos.org ─────────────────────────────
+const LOGO_SLUGS = {
+    "honda":"honda","toyota":"toyota","ford":"ford","chevrolet":"chevrolet",
+    "bmw":"bmw","mercedes-benz":"mercedes-benz","mercedes":"mercedes-benz",
+    "audi":"audi","mazda":"mazda","nissan":"nissan","subaru":"subaru",
+    "dodge":"dodge","jeep":"jeep","porsche":"porsche","volkswagen":"volkswagen",
+    "vw":"volkswagen","hyundai":"hyundai","kia":"kia","tesla":"tesla",
+    "lexus":"lexus","mitsubishi":"mitsubishi","infiniti":"infiniti",
+    "acura":"acura","cadillac":"cadillac","buick":"buick","lincoln":"lincoln",
+    "volvo":"volvo","jaguar":"jaguar","land-rover":"land-rover",
+    "land rover":"land-rover","rolls-royce":"rolls-royce","bentley":"bentley",
+    "lamborghini":"lamborghini","ferrari":"ferrari","maserati":"maserati",
+    "alfa romeo":"alfa-romeo","fiat":"fiat","genesis":"genesis","ram":"ram",
+    "gmc":"gmc","chrysler":"chrysler","mini":"mini","suzuki":"suzuki",
+    "mustang":"ford","camaro":"chevrolet"
+};
+
+function getLogoUrl(make) {
+    if (!make) return null;
+    const key  = make.toLowerCase().trim();
+    const slug = LOGO_SLUGS[key] || Object.entries(LOGO_SLUGS).find(([k]) => key.includes(k) || k.includes(key))?.[1];
+    return slug ? `https://www.carlogos.org/car-logos/${slug}-logo.png` : null;
+}
+
+function clubAvatarHtml(c) {
+    const logo  = getCarLogo(c.make) || getCarLogo(c.name);
+    const color = stringToColor(c.name);
+    if (logo) {
+        return `<div class="club-card-avatar-wrap" style="background:${color}">
+            <img src="${logo}" class="club-card-logo"
+                 onerror="this.parentElement.innerHTML='<div class=club-fallback-initial>${esc(c.name[0].toUpperCase())}</div>'">
+        </div>`;
+    }
+    return `<div class="club-card-avatar-wrap" style="background:${color}">
+        <div class="club-fallback-initial">${esc(c.name[0].toUpperCase())}</div>
+    </div>`;
+}
+
+function getCarLogo(make) {
+    if (!make) return null;
+    const key  = make.toLowerCase().trim();
+    const slug = LOGO_SLUGS[key] || Object.entries(LOGO_SLUGS).find(([k]) => key.includes(k) || k.includes(key))?.[1];
+    return slug ? `https://www.carlogos.org/car-logos/${slug}-logo.png` : null;
+}
+
+function stringToColor(str) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) hash = str.charCodeAt(i) + ((hash << 5) - hash);
+    const colors = ["#1d4ed8","#7c3aed","#0891b2","#065f46","#9a3412","#1e3a5f","#4c1d95"];
+    return colors[Math.abs(hash) % colors.length];
+}
+
+function debounceClubs() {
+    clearTimeout(_clubDelay);
+    _clubDelay = setTimeout(loadAllClubs, 350);
+}
+function setClubSort(s) {
+    _clubSort = s;
+    document.querySelectorAll(".sort-btn").forEach(b => b.classList.remove("active"));
+    document.getElementById(`sort-${s}`).classList.add("active");
+    loadAllClubs();
+}
+
+function clubCard(c, mine=false) {
+    const joined = c.is_member || mine;
+    return `
+        <div class="club-card" onclick="window.location.href='/clubs/${esc(c.slug)}'">
+            <div class="club-card-banner" style="background:${stringToColor(c.name)}">
+                ${clubAvatarHtml(c)}
+            </div>
+            <div class="club-card-body">
+                <div class="club-card-name">${esc(c.name)}</div>
+                ${c.make ? `<div class="club-card-make"><i data-lucide="car"></i>${esc(c.make)}</div>` : ""}
+                <div class="club-card-desc">${esc((c.description||"").slice(0,80))}${(c.description||"").length>80?"…":""}</div>
+                <div class="club-card-footer">
+                    <span><i data-lucide="users"></i> ${c.member_count||0} members</span>
+                    ${c.is_auto ? '<span class="club-auto-badge">Official</span>' : ""}
+                    <span class="club-join-status ${joined?'joined':''}">${joined?(c.my_role==='admin'?'👑 Admin':'✓ Joined'):'Join'}</span>
+                </div>
+            </div>
+        </div>`;
+}
+
+async function loadMyClubs() {
+    const res   = await fetch("/api/clubs/my");
+    const clubs = await res.json();
+    const sec   = document.getElementById("myClubsSection");
+    const el    = document.getElementById("myClubs");
+    if (!clubs.length) { sec.style.display = "none"; return; }
+    sec.style.display = "block";
+    el.innerHTML = clubs.map(c => clubCard(c, true)).join("");
+    if (window.refreshIcons) window.refreshIcons();
+}
+
+async function loadAllClubs() {
+    const q  = document.getElementById("clubSearch").value.trim();
+    const el = document.getElementById("allClubs");
+    el.innerHTML = '<div class="clubs-loading"><i data-lucide="loader"></i> Loading…</div>';
+    if (window.refreshIcons) window.refreshIcons();
+    const params = new URLSearchParams({sort: _clubSort});
+    if (q) params.set("q", q);
+    const res   = await fetch(`/api/clubs?${params}`);
+    const clubs = await res.json();
+    el.innerHTML = clubs.length ? clubs.map(c => clubCard(c)).join("") : '<p style="color:var(--text-muted);padding:20px;">No clubs found</p>';
+    if (window.refreshIcons) window.refreshIcons();
+}
+
+function openCreateClub()  { document.getElementById("createClubModal").style.display = "flex"; }
+function closeCreateClub() { document.getElementById("createClubModal").style.display = "none"; }
+
+async function submitCreateClub() {
+    const name = document.getElementById("clubName").value.trim();
+    const desc = document.getElementById("clubDesc").value.trim();
+    const make = document.getElementById("clubMake").value.trim();
+    const msg  = document.getElementById("createClubMsg");
+    if (!name) { msg.textContent="Club name required"; msg.className="settings-msg error"; msg.style.display="block"; return; }
+    const res  = await csrfFetch("/api/clubs/create", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({name,description:desc,make}) });
+    const data = await res.json();
+    if (data.error) { msg.textContent=data.error; msg.className="settings-msg error"; msg.style.display="block"; return; }
+    closeCreateClub();
+    window.location.href = `/clubs/${data.slug}`;
+}
+
+document.addEventListener("DOMContentLoaded", () => { loadMyClubs(); loadAllClubs(); });
+</script>
+{% endblock %}

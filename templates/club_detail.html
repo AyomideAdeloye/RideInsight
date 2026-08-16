@@ -1,0 +1,289 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="club-detail-page">
+
+    <!-- Club header -->
+    <div class="club-hero" id="clubHero">
+        <div class="club-hero-banner" id="clubBanner"></div>
+        <div class="club-hero-body">
+            <div class="club-hero-avatar" id="clubAvatar"></div>
+            <div class="club-hero-info">
+                <h2 id="clubName">Loading…</h2>
+                <p id="clubDesc" class="club-hero-desc"></p>
+                <div class="club-hero-meta">
+                    <span id="clubMembers"><i data-lucide="users"></i> 0 members</span>
+                    <span id="clubMake"></span>
+                </div>
+            </div>
+            <div class="club-hero-actions">
+                <button class="btn" id="joinBtn" onclick="toggleJoin()">Join</button>
+                <button class="btn btn-ghost" id="leaveBtn" onclick="confirmLeave()" style="display:none;">
+                    <i data-lucide="log-out"></i> Leave
+                </button>
+                <button class="btn btn-danger" id="deleteBtn" onclick="confirmDelete()" style="display:none;">
+                    <i data-lucide="trash-2"></i> Delete Club
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="club-tabs">
+        <button class="club-tab active" onclick="showTab('posts')"><i data-lucide="layout-list"></i> Posts</button>
+        <button class="club-tab" onclick="showTab('members')"><i data-lucide="users"></i> Members</button>
+    </div>
+
+    <div class="club-content-layout">
+
+        <!-- Posts tab -->
+        <div id="tab-posts" class="club-tab-content">
+            <div id="clubPostComposer" style="display:none;" class="post-composer" style="margin-bottom:16px;">
+                <input id="clubPostTitle" class="composer-field" placeholder="Post title" style="margin-bottom:8px;">
+                <textarea id="clubPostBody" class="composer-textarea" placeholder="Share something with the club…" style="min-height:80px;"></textarea>
+                <div style="display:flex;justify-content:flex-end;margin-top:8px;">
+                    <button class="btn btn-primary" onclick="submitClubPost()">Post to Club</button>
+                </div>
+            </div>
+            <div id="clubPosts" class="club-posts-list">
+                <div class="explore-loading"><i data-lucide="loader"></i> Loading posts…</div>
+            </div>
+        </div>
+
+        <!-- Members tab -->
+        <div id="tab-members" class="club-tab-content" style="display:none;">
+            <div id="clubMembersList" class="club-members-grid">
+                <div class="explore-loading"><i data-lucide="loader"></i> Loading members…</div>
+            </div>
+        </div>
+
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const CLUB_SLUG = "{{ club.slug }}";
+
+const LOGO_SLUGS = {
+    "honda":"honda","toyota":"toyota","ford":"ford","chevrolet":"chevrolet",
+    "bmw":"bmw","mercedes-benz":"mercedes-benz","mercedes":"mercedes-benz",
+    "audi":"audi","mazda":"mazda","nissan":"nissan","subaru":"subaru",
+    "dodge":"dodge","jeep":"jeep","porsche":"porsche","volkswagen":"volkswagen",
+    "vw":"volkswagen","hyundai":"hyundai","kia":"kia","tesla":"tesla",
+    "lexus":"lexus","mitsubishi":"mitsubishi","infiniti":"infiniti",
+    "acura":"acura","cadillac":"cadillac","lincoln":"lincoln","volvo":"volvo",
+    "jaguar":"jaguar","land rover":"land-rover","bentley":"bentley",
+    "lamborghini":"lamborghini","ferrari":"ferrari","genesis":"genesis",
+    "ram":"ram","gmc":"gmc","mini":"mini","mustang":"ford","camaro":"chevrolet"
+};
+function getCarLogo(make) {
+    if (!make) return null;
+    const key  = make.toLowerCase().trim();
+    const slug = LOGO_SLUGS[key] || Object.entries(LOGO_SLUGS).find(([k]) => key.includes(k) || k.includes(key))?.[1];
+    return slug ? `https://www.carlogos.org/car-logos/${slug}-logo.png` : null;
+}
+let _club      = null;
+let _isAdmin   = false;
+let _isMember  = false;
+
+function esc(s) { return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+function csrfFetch(url, opts={}) {
+    const token = document.querySelector('meta[name="csrf-token"]')?.content;
+    return fetch(url, {...opts, headers:{...(opts.headers||{}), ...(token?{"X-CSRFToken":token}:{})}});
+}
+function stringToColor(str) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) hash = str.charCodeAt(i) + ((hash << 5) - hash);
+    const colors = ["#1d4ed8","#7c3aed","#0891b2","#065f46","#9a3412","#1e3a5f","#4c1d95"];
+    return colors[Math.abs(hash) % colors.length];
+}
+
+async function loadClub() {
+    const res  = await fetch(`/api/clubs/${CLUB_SLUG}/info`);
+    const data = await res.json();
+    _club     = data.club;
+    if (!_club) return;
+
+    _isMember = !!_club.is_member;
+    _isAdmin  = _club.my_role === "admin";
+
+    const color = stringToColor(_club.name);
+    document.getElementById("clubBanner").style.background = color;
+    const avatarEl = document.getElementById("clubAvatar");
+    const logo = getCarLogo(_club.make || _club.name);
+    avatarEl.style.background = color;
+    if (logo) {
+        avatarEl.innerHTML = `<img src="${logo}" style="width:52px;height:52px;object-fit:contain;border-radius:50%;"
+            onerror="this.parentElement.textContent='${_club.name[0].toUpperCase()}'">`;
+    } else {
+        avatarEl.textContent = _club.name[0].toUpperCase();
+    }
+    document.getElementById("clubName").textContent = _club.name;
+    document.getElementById("clubDesc").textContent = _club.description || "";
+    document.getElementById("clubMembers").innerHTML = `<i data-lucide="users"></i> ${_club.member_count || 0} members`;
+    if (_club.make) {
+        document.getElementById("clubMake").innerHTML = `<i data-lucide="car"></i> ${esc(_club.make)}`;
+    }
+
+    const joinBtn   = document.getElementById("joinBtn");
+    const leaveBtn  = document.getElementById("leaveBtn");
+    const deleteBtn = document.getElementById("deleteBtn");
+
+    if (_isAdmin) {
+        joinBtn.style.display   = "none";
+        leaveBtn.style.display  = "none";
+        deleteBtn.style.display = "block";
+    } else if (_isMember) {
+        joinBtn.style.display   = "none";
+        leaveBtn.style.display  = "block";
+        deleteBtn.style.display = "none";
+    } else {
+        joinBtn.style.display   = "block";
+        joinBtn.textContent     = "Join Club";
+        joinBtn.className       = "btn btn-primary";
+        leaveBtn.style.display  = "none";
+        deleteBtn.style.display = "none";
+    }
+
+    if (_isMember) {
+        document.getElementById("clubPostComposer").style.display = "block";
+    }
+
+    renderMembers(data.members);
+    if (window.refreshIcons) window.refreshIcons();
+}
+
+async function toggleJoin() {
+    if (!_club) return;
+    const res  = await csrfFetch(`/api/clubs/${_club.id}/join`, { method: "POST" });
+    const data = await res.json();
+    _isMember  = data.joined;
+    await loadClub();
+    await loadPosts();
+}
+
+async function confirmLeave() {
+    if (!confirm("Are you sure you want to leave this club?")) return;
+    await toggleJoin();
+}
+
+async function confirmDelete() {
+    if (!confirm(`Delete "${_club.name}" permanently? This removes all posts and members. This cannot be undone.`)) return;
+    const res  = await csrfFetch(`/api/clubs/${_club.id}/delete`, { method: "POST" });
+    const data = await res.json();
+    if (data.error) { alert(data.error); return; }
+    window.location.href = "/clubs";
+}
+
+function showTab(tab) {
+    document.querySelectorAll(".club-tab").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll(".club-tab-content").forEach(t => t.style.display = "none");
+    document.getElementById(`tab-${tab}`).style.display = "block";
+    event.target.closest(".club-tab").classList.add("active");
+}
+
+async function loadPosts() {
+    const res   = await fetch(`/api/clubs/${CLUB_SLUG}/posts`);
+    const posts = await res.json();
+    const el    = document.getElementById("clubPosts");
+
+    if (posts.length === 0) {
+        el.innerHTML = `<div class="explore-empty"><i data-lucide="message-square"></i><p>No posts yet. Be the first!</p></div>`;
+        if (window.refreshIcons) window.refreshIcons();
+        return;
+    }
+
+    el.innerHTML = posts.map(p => `
+        <div class="post-card">
+            <div class="post-header">
+                <div class="post-author">
+                    <span class="username" onclick="window.location.href='/profile/${esc(p.username)}'">@${esc(p.username)}</span>
+                    ${p.main_car ? `<span class="post-user-car"><i data-lucide="car"></i>${esc(p.main_car)}</span>` : ""}
+                </div>
+                <span class="time">${esc(p.created_at ? p.created_at.slice(0,10) : "")}</span>
+            </div>
+            <h2 class="post-title">${esc(p.title)}</h2>
+            <p class="post-body">${esc(p.body)}</p>
+            ${p.image ? `<img src="${esc(p.image)}" class="post-image">` : ""}
+            <div class="post-actions">
+                <div class="vote-buttons">
+                    <button class="like-btn ${p.user_liked ? 'active' : ''}" id="clp-${p.id}" onclick="likeClubPost(${p.id})">
+                        <i data-lucide="thumbs-up"></i> ${p.likes || 0}
+                    </button>
+                </div>
+                ${_isAdmin && p.user_id !== {{ club.created_by or 0 }} ? `
+                <button class="btn btn-ghost" style="font-size:12px;padding:4px 10px;" onclick="removeClubPost(${p.id})">
+                    <i data-lucide="trash-2"></i>
+                </button>` : ""}
+            </div>
+        </div>
+    `).join("");
+    if (window.refreshIcons) window.refreshIcons();
+}
+
+async function likeClubPost(postId) {
+    const res  = await csrfFetch(`/api/clubs/post/${postId}/like`, { method: "POST" });
+    const data = await res.json();
+    const btn  = document.getElementById(`clp-${postId}`);
+    if (!btn) return;
+    const cur = parseInt(btn.textContent.replace(/\D/g,"")) || 0;
+    btn.innerHTML = `<i data-lucide="thumbs-up"></i> ${data.liked ? cur + 1 : Math.max(0, cur - 1)}`;
+    btn.classList.toggle("active", data.liked);
+    if (window.refreshIcons) window.refreshIcons();
+}
+
+async function submitClubPost() {
+    const title = document.getElementById("clubPostTitle").value.trim();
+    const body  = document.getElementById("clubPostBody").value.trim();
+    if (!title) { alert("Please add a title"); return; }
+    if (!body)  { alert("Please write something"); return; }
+
+    const fd = new FormData();
+    fd.append("title", title);
+    fd.append("body",  body);
+    const token = document.querySelector('meta[name="csrf-token"]')?.content;
+    await fetch(`/api/clubs/${CLUB_SLUG}/post`, {
+        method: "POST",
+        headers: token ? { "X-CSRFToken": token } : {},
+        body: fd
+    });
+
+    document.getElementById("clubPostTitle").value = "";
+    document.getElementById("clubPostBody").value  = "";
+    await loadPosts();
+}
+
+function renderMembers(members) {
+    const el = document.getElementById("clubMembersList");
+    el.innerHTML = members.map(m => `
+        <div class="club-member-card">
+            <div class="club-member-avatar">${esc(m.username[0].toUpperCase())}</div>
+            <div class="club-member-info">
+                <a class="club-member-name" href="/profile/${esc(m.username)}">@${esc(m.username)}</a>
+                ${m.main_car ? `<span class="post-user-car"><i data-lucide="car"></i>${esc(m.main_car)}</span>` : ""}
+                ${m.role === "admin" ? '<span class="club-role-badge admin">Admin</span>' : ""}
+            </div>
+            ${_isAdmin && m.role !== "admin" ? `
+            <button class="btn btn-ghost" style="font-size:12px;padding:4px 8px;margin-left:auto;"
+                onclick="promoteUser(${m.id}, 'admin')">Make Admin</button>` : ""}
+        </div>
+    `).join("");
+    if (window.refreshIcons) window.refreshIcons();
+}
+
+async function promoteUser(userId, role) {
+    if (!_club) return;
+    await csrfFetch(`/api/clubs/${_club.id}/promote`, {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({user_id: userId, role})
+    });
+    await loadClub();
+}
+
+document.addEventListener("DOMContentLoaded", async () => {
+    await loadClub();
+    await loadPosts();
+});
+</script>
+{% endblock %}

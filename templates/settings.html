@@ -1,0 +1,195 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="settings-page">
+    <h2><i data-lucide="settings"></i> Settings</h2>
+
+    <div class="settings-layout">
+        <!-- Sidebar nav -->
+        <div class="settings-nav">
+            <button class="settings-nav-item active" data-section="account" onclick="showSection('account')"><i data-lucide="user"></i> Account</button>
+            <button class="settings-nav-item" data-section="privacy" onclick="showSection('privacy')"><i data-lucide="lock"></i> Privacy</button>
+            <button class="settings-nav-item" data-section="notifications" onclick="showSection('notifications')"><i data-lucide="bell"></i> Notifications</button>
+            <button class="settings-nav-item" data-section="appearance" onclick="showSection('appearance')"><i data-lucide="palette"></i> Appearance</button>
+            <button class="settings-nav-item" data-section="saved" onclick="showSection('saved')"><i data-lucide="bookmark"></i> Saved Posts</button>
+            <button class="settings-nav-item danger-nav" data-section="danger" onclick="showSection('danger')"><i data-lucide="triangle-alert"></i> Danger Zone</button>
+        </div>
+
+        <!-- Content -->
+        <div class="settings-content">
+
+            <!-- Account -->
+            <div class="settings-section active" id="section-account">
+                <h3>Account Information</h3>
+                <div class="settings-card">
+                    <label>Username</label>
+                    <input type="text" id="settingsUsername" value="{{ user.username }}">
+                    <label>Email</label>
+                    <input type="email" id="settingsEmail" value="{{ user.email }}">
+                    <button class="btn btn-primary" onclick="saveAccount()">Save Changes</button>
+                    <div class="settings-msg" id="accountMsg"></div>
+                </div>
+
+                <h3><i data-lucide="car"></i> My Cars</h3>
+                <div class="settings-card">
+                    <label>Main Car</label>
+                    <input type="text" id="settingsMainCar" value="{{ user.main_car or '' }}" placeholder="e.g. 2018 Mazda 6 Touring">
+                    <label>Secondary Car</label>
+                    <input type="text" id="settingsSecondaryCar" value="{{ user.secondary_car or '' }}" placeholder="e.g. 2020 Honda CBR600RR">
+                    <button class="btn btn-primary" onclick="saveCars()">Save Cars</button>
+                    <div class="settings-msg" id="carsMsg"></div>
+                </div>
+
+                <h3>Change Password</h3>
+                <div class="settings-card">
+                    <label>Current Password</label>
+                    <input type="password" id="currentPassword" placeholder="Enter current password">
+                    <label>New Password</label>
+                    <input type="password" id="newPassword" placeholder="At least 8 characters">
+                    <label>Confirm New Password</label>
+                    <input type="password" id="confirmPassword" placeholder="Re-enter new password">
+                    <button class="btn btn-primary" onclick="savePassword()">Change Password</button>
+                    <div class="settings-msg" id="passwordMsg"></div>
+                </div>
+            </div>
+
+            <!-- Privacy -->
+            <div class="settings-section" id="section-privacy">
+                <h3>Privacy</h3>
+                <div class="settings-card">
+                    <div class="settings-toggle-row">
+                        <div>
+                            <strong>Private Profile</strong>
+                            <p>Only approved followers can see your posts and garage</p>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" id="isPrivate" {% if user.is_private %}checked{% endif %}>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="settings-divider"></div>
+
+                    <label>Who can message you?</label>
+                    <select id="dmPermission">
+                        <option value="everyone"  {% if user.dm_permission == 'everyone' %}selected{% endif %}>Everyone</option>
+                        <option value="followers" {% if user.dm_permission == 'followers' %}selected{% endif %}>Followers only</option>
+                        <option value="nobody"    {% if user.dm_permission == 'nobody' %}selected{% endif %}>Nobody</option>
+                    </select>
+
+                    <button class="btn btn-primary" onclick="savePrivacy()">Save Privacy Settings</button>
+                    <div class="settings-msg" id="privacyMsg"></div>
+                </div>
+            </div>
+
+            <!-- Notifications -->
+            <div class="settings-section" id="section-notifications">
+                <h3>Notifications</h3>
+                <div class="settings-card">
+                    <div class="settings-toggle-row">
+                        <div>
+                            <strong>In-App Notifications</strong>
+                            <p>Get notified about likes, comments, and follows in the app</p>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" id="inappNotif" {% if user.inapp_notifications %}checked{% endif %}>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div class="settings-divider"></div>
+                    <div class="settings-toggle-row">
+                        <div>
+                            <strong>Email Notifications</strong>
+                            <p>Get emailed about important account activity</p>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" id="emailNotif" {% if user.email_notifications %}checked{% endif %}>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <button class="btn btn-primary" onclick="saveNotifications()">Save Notification Settings</button>
+                    <div class="settings-msg" id="notifMsg"></div>
+                </div>
+            </div>
+
+            <!-- Appearance -->
+            <div class="settings-section" id="section-appearance">
+                <h3>Appearance</h3>
+                <div class="settings-card">
+                    <div class="settings-toggle-row">
+                        <div>
+                            <strong>Dark Mode</strong>
+                            <p>Switch the app to a darker color scheme</p>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" id="darkMode" {% if user.dark_mode %}checked{% endif %} onchange="toggleDarkMode()">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="settings-divider"></div>
+
+                    <strong>Accent Color</strong>
+                    <p style="color:var(--text-muted);font-size:13px;margin-bottom:14px;">Choose a color scheme for the app</p>
+                    <div class="color-scheme-picker">
+                        {% set schemes = [
+                            ('blue',   '#2563eb', 'Blue'),
+                            ('red',    '#dc2626', 'Red'),
+                            ('green',  '#16a34a', 'Green'),
+                            ('orange', '#ea580c', 'Orange'),
+                            ('purple', '#7c3aed', 'Purple'),
+                        ] %}
+                        {% for key, hex, label in schemes %}
+                        <button class="color-swatch {% if (user.color_scheme or 'blue') == key %}active{% endif %}"
+                                data-scheme="{{ key }}"
+                                style="background:{{ hex }};"
+                                onclick="setColorScheme('{{ key }}')"
+                                title="{{ label }}">
+                        </button>
+                        {% endfor %}
+                    </div>
+                    <div class="settings-msg" id="schemeMsg"></div>
+                </div>
+            </div>
+
+            <!-- Saved Posts -->
+            <div class="settings-section" id="section-saved">
+                <h3>Saved Posts</h3>
+                <div id="savedPostsList" class="saved-posts-list">
+                    <p class="empty-state">Loading…</p>
+                </div>
+            </div>
+
+            <!-- Danger Zone -->
+            <div class="settings-section" id="section-danger">
+                <h3>Danger Zone</h3>
+                <div class="settings-card danger-card">
+                    <strong>Delete Account</strong>
+                    <p>This permanently deletes your account, posts, builds, comparisons, and all associated data. This cannot be undone.</p>
+                    <button class="btn btn-danger" onclick="openDeleteModal()">Delete My Account</button>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<!-- Delete confirmation modal -->
+<div class="modal-overlay" id="deleteModal" style="display:none;">
+    <div class="modal-box">
+        <h3><i data-lucide="triangle-alert"></i> Delete Account</h3>
+        <p>This action is <strong>permanent</strong> and cannot be undone. All your posts, builds, comparisons, and garage entries will be deleted forever.</p>
+        <label>Enter your password to confirm</label>
+        <input type="password" id="deletePassword" placeholder="Your password">
+        <div class="settings-msg" id="deleteMsg"></div>
+        <div class="modal-actions">
+            <button class="btn btn-ghost" onclick="closeDeleteModal()">Cancel</button>
+            <button class="btn btn-danger" onclick="confirmDeleteAccount()">Yes, Delete Everything</button>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='settings.js') }}"></script>
+{% endblock %}

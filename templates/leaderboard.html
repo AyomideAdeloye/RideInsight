@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="leaderboard-page">
+
+    <div class="leaderboard-hero">
+        <i data-lucide="trophy"></i>
+        <h1>Leaderboard</h1>
+        <p>The best builders, racers, and creators on RideInsight</p>
+    </div>
+
+    <!-- Tabs -->
+    <div class="lb-tabs">
+        <button class="lb-tab active" onclick="showTab('builders', this)">
+            <i data-lucide="wrench"></i> Top Builders
+        </button>
+        <button class="lb-tab" onclick="showTab('posts', this)">
+            <i data-lucide="flame"></i> Popular Posts
+        </button>
+        <button class="lb-tab" onclick="showTab('racers', this)">
+            <i data-lucide="flag"></i> Race Champions
+        </button>
+        <button class="lb-tab" onclick="showTab('followed', this)">
+            <i data-lucide="users"></i> Most Followed
+        </button>
+    </div>
+
+    <!-- Builders -->
+    <div class="lb-panel active" id="panel-builders">
+        <div class="lb-list" id="buildersList"><div class="lb-loading">Loading…</div></div>
+    </div>
+
+    <!-- Most Liked Posts -->
+    <div class="lb-panel" id="panel-posts">
+        <div class="lb-list" id="postsList"><div class="lb-loading">Loading…</div></div>
+    </div>
+
+    <!-- Race Champions -->
+    <div class="lb-panel" id="panel-racers">
+        <div class="lb-list" id="racersList"><div class="lb-loading">Loading…</div></div>
+    </div>
+
+    <!-- Most Followed -->
+    <div class="lb-panel" id="panel-followed">
+        <div class="lb-list" id="followedList"><div class="lb-loading">Loading…</div></div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const MEDALS = ['🥇','🥈','🥉'];
+
+function medal(i) {
+    return i < 3
+        ? `<span class="lb-medal">${MEDALS[i]}</span>`
+        : `<span class="lb-rank">#${i+1}</span>`;
+}
+
+function avatar(user, size = 42) {
+    const letter = (user.username || '?')[0].toUpperCase();
+    if (user.avatar) {
+        return `<img src="${user.avatar}" class="lb-avatar" style="width:${size}px;height:${size}px;" loading="lazy">`;
+    }
+    return `<div class="lb-avatar lb-avatar-init" style="width:${size}px;height:${size}px;font-size:${size*0.4}px;">${letter}</div>`;
+}
+
+function renderBuilders(data) {
+    if (!data.length) return '<div class="lb-empty">No builds yet — be the first!</div>';
+    return data.map((u, i) => `
+        <a class="lb-row" href="/profile/${u.username}">
+            ${medal(i)}
+            ${avatar(u)}
+            <div class="lb-info">
+                <strong>@${u.username}</strong>
+                <span>${u.main_car || 'No car set'}</span>
+            </div>
+            <div class="lb-stat">
+                <span class="lb-stat-val">$${Math.round(u.total_value).toLocaleString()}</span>
+                <span class="lb-stat-label">${u.build_count} build${u.build_count !== 1 ? 's' : ''}</span>
+            </div>
+        </a>
+    `).join('');
+}
+
+function renderPosts(data) {
+    if (!data.length) return '<div class="lb-empty">No posts yet.</div>';
+    return data.map((p, i) => `
+        <div class="lb-row lb-post-row">
+            ${medal(i)}
+            <div class="lb-info" style="flex:1;min-width:0;">
+                <strong>${escHtml(p.title)}</strong>
+                <span>by @${escHtml(p.username)} · ${escHtml(p.car || '')}</span>
+            </div>
+            ${p.image ? `<img src="${p.image}" class="lb-post-thumb" loading="lazy">` : ''}
+            <div class="lb-stat">
+                <span class="lb-stat-val">❤️ ${p.likes}</span>
+                <span class="lb-stat-label">likes</span>
+            </div>
+        </div>
+    `).join('');
+}
+
+function renderRacers(data) {
+    if (!data.length) return '<div class="lb-empty">No race results yet.</div>';
+    return data.map((r, i) => `
+        <a class="lb-row" href="/profile/${r.username}">
+            ${medal(i)}
+            ${avatar(r)}
+            <div class="lb-info">
+                <strong>@${r.username}</strong>
+                <span>${r.main_car || 'No car set'}</span>
+            </div>
+            <div class="lb-stat">
+                <span class="lb-stat-val">🏁 ${r.wins} W</span>
+                <span class="lb-stat-label">${r.win_rate}% win rate · ${r.total_races} races</span>
+            </div>
+        </a>
+    `).join('');
+}
+
+function renderFollowed(data) {
+    if (!data.length) return '<div class="lb-empty">No users yet.</div>';
+    return data.map((u, i) => `
+        <a class="lb-row" href="/profile/${u.username}">
+            ${medal(i)}
+            ${avatar(u)}
+            <div class="lb-info">
+                <strong>@${u.username}</strong>
+                <span>${u.main_car || 'No car set'}</span>
+            </div>
+            <div class="lb-stat">
+                <span class="lb-stat-val">👥 ${u.followers}</span>
+                <span class="lb-stat-label">followers</span>
+            </div>
+        </a>
+    `).join('');
+}
+
+function escHtml(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function showTab(tab, btn) {
+    document.querySelectorAll('.lb-tab').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.lb-panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('panel-' + tab).classList.add('active');
+}
+
+async function loadLeaderboard() {
+    const res  = await fetch('/api/leaderboard');
+    const data = await res.json();
+    document.getElementById('buildersList').innerHTML  = renderBuilders(data.builders);
+    document.getElementById('postsList').innerHTML     = renderPosts(data.posts);
+    document.getElementById('racersList').innerHTML    = renderRacers(data.race_champs);
+    document.getElementById('followedList').innerHTML  = renderFollowed(data.most_followed);
+    if (window.lucide) lucide.createIcons();
+}
+
+loadLeaderboard();
+</script>
+{% endblock %}

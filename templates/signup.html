@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="auth-container">
+    <h2>Create Account</h2>
+    {% if error %}<div class="auth-error">{{ error }}</div>{% endif %}
+    <form method="POST" autocomplete="off">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <!-- Step 1: Account details -->
+        <div class="signup-section">
+            <input name="username" placeholder="Username (letters, numbers, underscores)" required
+                   autocomplete="off" pattern="[\w\-]{3,50}" title="3–50 characters, letters/numbers/underscores only">
+            <input name="email" type="email" placeholder="Email" required autocomplete="email">
+            <input name="password" type="password" placeholder="Password (8+ characters)" required autocomplete="new-password">
+        </div>
+
+        <!-- Step 2: Your cars (optional) -->
+        <div class="signup-section signup-cars-section">
+            <div class="signup-cars-header">
+                <i data-lucide="car"></i>
+                <div>
+                    <strong>What do you drive?</strong>
+                    <span class="signup-optional">Optional — you can add this later in settings</span>
+                </div>
+            </div>
+            <input name="main_car" placeholder="Main car (e.g. 2018 Mazda 6 Touring)" autocomplete="off">
+            <input name="secondary_car" placeholder="Secondary car (e.g. 2020 Honda CBR600RR)" autocomplete="off">
+        </div>
+
+        <button type="submit">Create Account</button>
+    </form>
+    <p>Already have an account? <a href="/login">Login</a></p>
+</div>
+{% endblock %}

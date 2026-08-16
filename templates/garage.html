@@ -1,56 +1,89 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>My Garage | RideInsight</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-</head>
-<body>
+{% extends "base.html" %}
+{% block content %}
+<div class="garage-page">
 
-<nav class="navbar">
-    <h1 class="logo">RideInsight</h1>
-    <button class="post-btn" onclick="window.location.href='/'">Home</button>
-</nav>
-
-<div class="garage-container">
-    <div class="garage-header">
-        <h2>My Garage</h2>
-        <button class="post-btn" onclick="openGarageModal()">Add Vehicle</button>
+    <div class="garage-page-header">
+        <div>
+            <h2>My Garage</h2>
+            <p class="garage-subtitle">Your vehicles and their mod history</p>
+        </div>
+        <button class="btn btn-primary" onclick="openAddCarModal()">
+            <i data-lucide="plus"></i> Add Vehicle
+        </button>
     </div>
 
-    <div id="garage-list" class="garage-list"></div>
+    <div id="garageGrid" class="garage-grid">
+        <div class="garage-empty" id="garageEmpty" style="display:none;">
+            <i data-lucide="car"></i>
+            <p>No vehicles yet. Add your first ride!</p>
+        </div>
+    </div>
+
 </div>
 
-<div id="garageModal" class="modal">
-    <div class="modal-content">
-        <h2>Add Vehicle</h2>
-
-        <input id="owner" placeholder="Owner username">
-        <input id="year" placeholder="Year">
-        <input id="make" placeholder="Make">
-        <input id="model" placeholder="Model">
-        <input id="trim" placeholder="Trim">
-        <input id="carImage" placeholder="Image URL">
-        <textarea id="notes" placeholder="Notes about your vehicle"></textarea>
-
-        <button onclick="submitCar()">Save Vehicle</button>
-        <button onclick="closeGarageModal()">Cancel</button>
+<!-- Add Vehicle Modal -->
+<div id="addCarModal" class="garage-modal-overlay" style="display:none;" onclick="closeModalOutside(event,'addCarModal')">
+    <div class="garage-modal-box">
+        <div class="garage-modal-header">
+            <strong>Add Vehicle</strong>
+            <button onclick="document.getElementById('addCarModal').style.display='none'" class="story-modal-close"><i data-lucide="x"></i></button>
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:8px;">
+            <input id="carYear"  class="composer-field" placeholder="Year" style="flex:1;">
+            <input id="carMake"  class="composer-field" placeholder="Make" style="flex:2;">
+            <input id="carModel" class="composer-field" placeholder="Model" style="flex:2;">
+        </div>
+        <input id="carTrim"  class="composer-field" placeholder="Trim (optional)" style="margin-bottom:8px;">
+        <textarea id="carNotes" class="composer-field" placeholder="Notes about this vehicle…" style="min-height:60px;resize:none;margin-bottom:8px;"></textarea>
+        <label class="composer-tool-btn" style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;margin-bottom:12px;">
+            <i data-lucide="image"></i> Add Photo
+            <input type="file" id="carImageInput" accept="image/*" style="display:none;" onchange="previewCarImage(this)">
+        </label>
+        <div id="carImagePreviewWrap" style="display:none;margin-bottom:12px;position:relative;">
+            <img id="carImagePreview" style="max-width:100%;border-radius:8px;max-height:160px;object-fit:cover;">
+            <button onclick="clearCarImage()" style="position:absolute;top:4px;right:4px;background:#0009;border:none;color:#fff;border-radius:50%;width:24px;height:24px;cursor:pointer;">×</button>
+        </div>
+        <div style="display:flex;gap:8px;">
+            <button class="btn btn-ghost" onclick="document.getElementById('addCarModal').style.display='none'">Cancel</button>
+            <button class="btn btn-primary" onclick="submitCar()">Save Vehicle</button>
+        </div>
     </div>
 </div>
 
-<div id="modModal" class="modal">
-    <div class="modal-content">
-        <h2>Add Mod</h2>
-
-        <input id="modName" placeholder="Mod name">
-        <input id="modCost" placeholder="Cost">
-        <input id="modCategory" placeholder="Category">
-
-        <button onclick="submitMod()">Add</button>
-        <button onclick="closeModModal()">Cancel</button>
+<!-- Add Mod Modal -->
+<div id="addModModal" class="garage-modal-overlay" style="display:none;" onclick="closeModalOutside(event,'addModModal')">
+    <div class="garage-modal-box">
+        <div class="garage-modal-header">
+            <strong>Add Mod</strong>
+            <button onclick="document.getElementById('addModModal').style.display='none'" class="story-modal-close"><i data-lucide="x"></i></button>
+        </div>
+        <input id="modName"     class="composer-field" placeholder="Mod name (e.g. Coilover Suspension)" style="margin-bottom:8px;">
+        <div style="display:flex;gap:8px;margin-bottom:8px;">
+            <input id="modCost"     class="composer-field" placeholder="Cost ($)" type="number" min="0" style="flex:1;">
+            <select id="modCategory" class="composer-field" style="flex:1;">
+                <option value="">Category…</option>
+                <option>Engine</option>
+                <option>Suspension</option>
+                <option>Brakes</option>
+                <option>Exhaust</option>
+                <option>Wheels / Tires</option>
+                <option>Exterior</option>
+                <option>Interior</option>
+                <option>Electronics</option>
+                <option>Transmission</option>
+                <option>Other</option>
+            </select>
+        </div>
+        <div id="shopSuggestions" style="display:none;margin-bottom:10px;"></div>
+        <div style="display:flex;gap:8px;">
+            <button class="btn btn-ghost" onclick="document.getElementById('addModModal').style.display='none'">Cancel</button>
+            <button class="btn btn-primary" onclick="submitMod()">Add Mod</button>
+        </div>
     </div>
 </div>
 
+{% endblock %}
+
+{% block scripts %}
 <script src="{{ url_for('static', filename='garage.js') }}"></script>
-</body>
-</html>
+{% endblock %}

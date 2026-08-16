@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en" class="scheme-{{ color_scheme or 'blue' }} {% if dark_mode %}dark-mode{% endif %}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RideInsight</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+</head>
+<body>
+
+<div id="menuOverlay" class="menu-overlay" onclick="closeMenu()"></div>
+
+<nav class="navbar">
+    <div class="hamburger" onclick="toggleMenu()"><i data-lucide="menu"></i></div>
+    <h1 class="logo" onclick="window.location.href='/'">RideInsight</h1>
+    <input type="text" class="search-bar" placeholder="Search posts, cars, users…"
+           id="globalSearch" onkeydown="handleGlobalSearch(event)">
+
+    <a class="nav-explore-btn" href="/clubs" title="Car Clubs" style="background:var(--bg);color:var(--text);border:1px solid var(--border);"><i data-lucide="users"></i></a>
+    <a class="nav-explore-btn" href="/meets" title="Car Meets" style="background:var(--bg);color:var(--text);border:1px solid var(--border);"><i data-lucide="calendar-days"></i></a>
+    <a class="nav-explore-btn" href="/the_shop" title="The Shop" style="background:var(--bg);color:var(--text);border:1px solid var(--border);"><i data-lucide="shopping-bag"></i></a>
+    <a class="nav-explore-btn" href="/leaderboard" title="Leaderboard" style="background:var(--bg);color:var(--text);border:1px solid var(--border);"><i data-lucide="trophy"></i></a>
+    <div class="nav-actions">
+        {% if session.get("username") %}
+
+        <!-- Messages -->
+        <div style="position:relative;">
+            <button class="notif-btn" onclick="window.location.href='/messages'" title="Messages">
+                <i data-lucide="message-square"></i>
+                {% if unread_msgs > 0 %}
+                <span class="notif-badge" style="display:flex;">{{ unread_msgs if unread_msgs < 10 else '9+' }}</span>
+                {% endif %}
+            </button>
+        </div>
+
+        <!-- Notifications -->
+        <div style="position:relative;">
+            <button class="notif-btn" id="notifBtn" onclick="toggleNotifications()" title="Notifications">
+                <i data-lucide="bell"></i>
+                <span class="notif-badge" id="notifBadge" style="display:none;"></span>
+            </button>
+            <div class="notif-dropdown" id="notifDropdown">
+                <div class="notif-header">
+                    Notifications
+                    <button onclick="markAllRead()">Mark all read</button>
+                </div>
+                <div id="notifList"><div class="notif-empty">No notifications yet</div></div>
+            </div>
+        </div>
+
+        <!-- Profile dropdown -->
+        <div class="profile-dropdown-wrap" id="profileDropdownWrap">
+            <button class="profile-dropdown-btn" onclick="toggleProfileMenu()" id="profileMenuBtn">
+                {% if session.get("avatar") %}
+                <img src="{{ session['avatar'] }}" class="profile-nav-avatar profile-nav-avatar-img">
+                {% else %}
+                <div class="profile-nav-avatar">{{ session.get("username", "?")[0].upper() }}</div>
+                {% endif %}
+                <i data-lucide="chevron-down" id="profileChevron"></i>
+            </button>
+            <div class="profile-dropdown-menu" id="profileDropdownMenu" style="display:none;">
+                <div class="profile-dropdown-header">
+                    {% if session.get("avatar") %}
+                    <img src="{{ session['avatar'] }}" class="profile-nav-avatar lg profile-nav-avatar-img">
+                    {% else %}
+                    <div class="profile-nav-avatar lg">{{ session.get("username", "?")[0].upper() }}</div>
+                    {% endif %}
+                    <div>
+                        <strong>@{{ session.get("username") }}</strong>
+                        <a href="/profile/{{ session.get('username') }}" class="profile-dropdown-link">View Profile</a>
+                    </div>
+                </div>
+                <div class="profile-dropdown-divider"></div>
+                <a class="profile-dropdown-item" href="/settings">
+                    <i data-lucide="settings"></i> Settings
+                </a>
+                <a class="profile-dropdown-item" href="/garage">
+                    <i data-lucide="car"></i> My Garage
+                </a>
+                <a class="profile-dropdown-item" href="/builder">
+                    <i data-lucide="wrench"></i> Build Custom Vehicle
+                </a>
+                <a class="profile-dropdown-item" href="/race">
+                    <i data-lucide="flag"></i> Race Mode
+                </a>
+                <div class="profile-dropdown-divider"></div>
+                <a class="profile-dropdown-item danger" href="/logout">
+                    <i data-lucide="log-out"></i> Logout
+                </a>
+            </div>
+        </div>
+        {% else %}
+        <button class="btn btn-ghost" onclick="window.location.href='/login'">Login</button>
+        <button class="btn btn-primary" onclick="window.location.href='/signup'">Sign Up</button>
+        {% endif %}
+    </div>
+</nav>
+
+<aside class="left-sidebar hidden" id="sidebar">
+    <p onclick="window.location.href='/'"><i data-lucide="home"></i> Home</p>
+    <p onclick="window.location.href='/garage'"><i data-lucide="car"></i> My Garage</p>
+    <p onclick="window.location.href='/the_shop'"><i data-lucide="shopping-bag"></i> The Shop</p>
+    <p onclick="window.location.href='/clubs'"><i data-lucide="users"></i> Car Clubs</p>
+    <p onclick="window.location.href='/meets'"><i data-lucide="calendar-days"></i> Car Meets</p>
+    <p onclick="window.location.href='/compare'"><i data-lucide="scale"></i> Compare Vehicles</p>
+    <p onclick="window.location.href='/search'"><i data-lucide="compass"></i> Explore</p>
+    <p onclick="window.location.href='/saved'"><i data-lucide="bookmark"></i> Saved Comparisons</p>
+    <p onclick="window.location.href='/race'"><i data-lucide="flag"></i> Race Mode</p>
+    <p onclick="window.location.href='/builder'"><i data-lucide="wrench"></i> Build Custom Vehicle</p>
+    <p onclick="window.location.href='/leaderboard'"><i data-lucide="trophy"></i> Leaderboard</p>
+</aside>
+
+{% block content %}{% endblock %}
+
+<!-- Post Modal -->
+<div id="postModal" class="modal">
+    <div class="modal-content">
+        <h2>Create Post</h2>
+        <input id="car" placeholder="Your car, e.g. 2018 Mazda 6">
+        <input id="title" placeholder="Post title">
+        <textarea id="body" placeholder="What's on your mind?"></textarea>
+        <input id="image" type="file" accept="image/*">
+        <div class="modal-actions">
+            <button class="btn-submit" onclick="submitPost()">Post</button>
+            <button class="btn-cancel" onclick="closePostModal()">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<script src="{{ url_for('static', filename='script.js') }}"></script>
+{% block scripts %}{% endblock %}
+<script>
+    lucide.createIcons();
+    window.refreshIcons = () => lucide.createIcons();
+</script>
+
+</body>
+</html>

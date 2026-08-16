@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="race-page">
+
+    <div class="race-header">
+        <h2><i data-lucide="flag"></i> Race Mode</h2>
+        <p class="builder-subtitle">Race with your saved builds — specs determine your performance</p>
+    </div>
+
+    <!-- Mode Tabs -->
+    <div class="race-mode-tabs">
+        <button class="race-tab active" id="tab-drag" onclick="switchMode('drag')"><i data-lucide="zap"></i> Drag Race</button>
+        <button class="race-tab" id="tab-track" onclick="switchMode('track')"><i data-lucide="circle-dashed"></i> Track Race</button>
+    </div>
+
+    <div class="race-layout">
+        <!-- Left: Setup -->
+        <div class="race-setup-panel">
+
+            <!-- Your Build -->
+            <div class="race-setup-card">
+                <h3>Your Build</h3>
+                <select id="playerBuildSelect" onchange="onPlayerBuildChange()">
+                    <option value="">— Select a saved build —</option>
+                </select>
+                <div id="playerBuildPreview" class="build-preview" style="display:none;"></div>
+            </div>
+
+            <!-- Opponent -->
+            <div class="race-setup-card">
+                <h3>Opponent</h3>
+                <div class="opponent-type-tabs">
+                    <button class="opp-tab active" id="opp-ai" onclick="switchOpponent('ai')"><i data-lucide="bot"></i> AI</button>
+                    <button class="opp-tab" id="opp-user" onclick="switchOpponent('user')"><i data-lucide="user"></i> User Build</button>
+                </div>
+
+                <!-- AI opponent -->
+                <div id="ai-opponent-panel">
+                    <select id="aiDifficulty" onchange="onAIDifficultyChange()">
+                        <option value="easy">Easy — Stock Daily Driver</option>
+                        <option value="medium" selected>Medium — Lightly Modded</option>
+                        <option value="hard">Hard — Full Build</option>
+                        <option value="insane">Insane — Track Monster</option>
+                    </select>
+                    <div id="aiPreview" class="build-preview"></div>
+                </div>
+
+                <!-- User opponent -->
+                <div id="user-opponent-panel" style="display:none;">
+                    <select id="opponentUserSelect" onchange="onOpponentUserChange()">
+                        <option value="">— Select a user —</option>
+                    </select>
+                    <select id="opponentBuildSelect" style="display:none;" onchange="onOpponentBuildChange()">
+                        <option value="">— Select their build —</option>
+                    </select>
+                    <div id="opponentBuildPreview" class="build-preview" style="display:none;"></div>
+                </div>
+            </div>
+
+            <!-- Race Button -->
+            <button class="race-start-btn" id="raceStartBtn" onclick="startRace()" disabled>
+                <i data-lucide="flag-triangle-right"></i> Start Race
+            </button>
+
+            <!-- Leaderboard -->
+            <div class="race-setup-card" style="margin-top:16px;">
+                <h3><i data-lucide="trophy"></i> Leaderboard</h3>
+                <div id="leaderboard" class="leaderboard-list">
+                    <p class="empty-state" style="padding:8px 0;font-size:13px;">No races yet</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right: Game Canvas -->
+        <div class="race-canvas-panel">
+            <div class="race-canvas-wrap" id="raceCanvasWrap">
+                <canvas id="raceCanvas"></canvas>
+                <div class="race-overlay" id="raceOverlay">
+                    <div class="race-ready-msg" id="raceReadyMsg">
+                        <div style="font-size:48px;"><i data-lucide="flag" style="width:48px;height:48px;"></i></div>
+                        <div>Select builds and hit Start Race</div>
+                    </div>
+                </div>
+
+                <!-- HUD -->
+                <div class="race-hud" id="raceHud" style="display:none;">
+                    <div class="hud-item">
+                        <span class="hud-label" id="hudMode">DRAG</span>
+                    </div>
+                    <div class="hud-item">
+                        <span class="hud-label">SPEED</span>
+                        <span class="hud-value" id="hudSpeed">0</span>
+                        <span class="hud-unit">mph</span>
+                    </div>
+                    <div class="hud-item" id="hudLapWrap" style="display:none;">
+                        <span class="hud-label">LAP</span>
+                        <span class="hud-value" id="hudLap">1/3</span>
+                    </div>
+                    <div class="hud-item" id="hudTimeWrap">
+                        <span class="hud-label">TIME</span>
+                        <span class="hud-value" id="hudTime">0.00</span>
+                        <span class="hud-unit">s</span>
+                    </div>
+                </div>
+
+                <!-- Controls hint -->
+                <div class="race-controls-hint" id="raceControlsHint" style="display:none;">
+                    <span><i data-lucide="arrow-up"></i> / W — Accelerate</span>
+                    <span><i data-lucide="arrow-down"></i> / S — Brake</span>
+                    <span id="steerHint" style="display:none;"><i data-lucide="move-horizontal"></i> / A D — Steer</span>
+                    <span>Space — Nitro <i data-lucide="flame"></i></span>
+                </div>
+            </div>
+
+            <!-- Post-race results -->
+            <div class="race-results" id="raceResults" style="display:none;">
+                <div class="results-banner" id="resultsBanner"></div>
+                <div class="results-stats" id="resultsStats"></div>
+                <div class="results-actions">
+                    <button class="btn btn-primary" onclick="rematch()"><i data-lucide="refresh-cw"></i> Rematch</button>
+                    <button class="btn btn-ghost" onclick="resetRace()"><i data-lucide="arrow-left"></i> Back to Setup</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='race.js') }}"></script>
+{% endblock %}

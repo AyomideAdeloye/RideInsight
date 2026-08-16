@@ -1,0 +1,366 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="theshop-page">
+
+    <div class="theshop-header">
+        <div>
+            <h2><i data-lucide="shopping-bag"></i> The Shop</h2>
+            <p class="builder-subtitle">Buy and sell cars, parts, and accessories</p>
+        </div>
+        <button class="btn btn-primary" onclick="openCreateListing()">
+            <i data-lucide="plus"></i> Sell Something
+        </button>
+    </div>
+
+    <!-- Controls -->
+    <div class="explore-controls">
+        <div class="explore-search-row">
+            <div class="explore-search-wrap">
+                <i data-lucide="search"></i>
+                <input id="marketSearch" placeholder="Search listings…" oninput="debounceMarket()">
+            </div>
+            <div class="explore-sort">
+                <button class="sort-btn active" id="sort-recent" onclick="setMarketSort('recent')"><i data-lucide="clock"></i> Recent</button>
+                <button class="sort-btn" id="sort-price_asc" onclick="setMarketSort('price_asc')"><i data-lucide="trending-up"></i> $ Low</button>
+                <button class="sort-btn" id="sort-price_desc" onclick="setMarketSort('price_desc')"><i data-lucide="trending-down"></i> $ High</button>
+                <button class="sort-btn" id="sort-nearest" onclick="setMarketSort('nearest')"><i data-lucide="map-pin"></i> Nearest</button>
+            </div>
+        </div>
+        <div class="explore-filters">
+            <span class="filter-label">Category:</span>
+            <button class="filter-chip active" data-cat="" onclick="setCatFilter(this,'')">All</button>
+            <button class="filter-chip" data-cat="vehicle" onclick="setCatFilter(this,'vehicle')"><i data-lucide="car"></i> Vehicles</button>
+            <button class="filter-chip" data-cat="parts" onclick="setCatFilter(this,'parts')"><i data-lucide="wrench"></i> Parts</button>
+            <button class="filter-chip" data-cat="wheels" onclick="setCatFilter(this,'wheels')"><i data-lucide="disc"></i> Wheels</button>
+            <button class="filter-chip" data-cat="electronics" onclick="setCatFilter(this,'electronics')"><i data-lucide="cpu"></i> Electronics</button>
+            <button class="filter-chip" data-cat="accessories" onclick="setCatFilter(this,'accessories')"><i data-lucide="package"></i> Accessories</button>
+            <button class="filter-chip" data-cat="apparel" onclick="setCatFilter(this,'apparel')"><i data-lucide="shirt"></i> Apparel</button>
+        </div>
+    </div>
+
+    <!-- My listings quick link -->
+    <div id="myListingsBar" style="display:none;" class="my-listings-bar">
+        <span><i data-lucide="package"></i> You have active listings</span>
+        <button class="btn btn-ghost" onclick="showMyListings()">Manage</button>
+    </div>
+
+    <!-- Listings grid -->
+    <div id="listingsGrid" class="listings-grid">
+        <div class="explore-loading"><i data-lucide="loader"></i> Loading listings…</div>
+    </div>
+</div>
+
+<!-- My Listings Modal -->
+<div class="modal-overlay" id="myListingsModal" style="display:none;">
+    <div class="modal-box" style="max-width:600px;max-height:80vh;overflow-y:auto;">
+        <h3><i data-lucide="package"></i> My Listings</h3>
+        <div id="myListingsList"></div>
+        <div class="modal-actions"><button class="btn btn-ghost" onclick="document.getElementById('myListingsModal').style.display='none'">Close</button></div>
+    </div>
+</div>
+
+<!-- Create Listing Modal -->
+<div class="modal-overlay" id="createListingModal" style="display:none;">
+    <div class="modal-box" style="max-width:560px;max-height:90vh;overflow-y:auto;">
+        <h3><i data-lucide="plus-circle"></i> Create Listing</h3>
+
+        <label>Title *</label>
+        <input id="listTitle" placeholder="e.g. 2018 Honda Civic Type R, Turbo Kit, OEM Wheels…">
+
+        <label>Category *</label>
+        <select id="listCategory">
+            <option value="">Select category…</option>
+            <option value="vehicle">Vehicle</option>
+            <option value="parts">Parts & Mods</option>
+            <option value="wheels">Wheels & Tires</option>
+            <option value="electronics">Electronics</option>
+            <option value="accessories">Accessories</option>
+            <option value="apparel">Apparel</option>
+        </select>
+
+        <label>Condition *</label>
+        <select id="listCondition">
+            <option value="new">New</option>
+            <option value="like_new">Like New</option>
+            <option value="good" selected>Good</option>
+            <option value="fair">Fair</option>
+            <option value="parts_only">Parts Only</option>
+        </select>
+
+        <label>Price (USD) *</label>
+        <input id="listPrice" type="number" min="0" step="0.01" placeholder="0.00">
+
+        <label>Description</label>
+        <textarea id="listDesc" placeholder="Describe what you're selling, fitment, condition details…" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;resize:vertical;min-height:100px;font-size:14px;background:var(--bg);color:var(--text);outline:none;font-family:inherit;"></textarea>
+
+        <label>Location</label>
+        <div style="display:flex;gap:8px;align-items:center;">
+            <input id="listLocation" placeholder="City, State" style="flex:1;">
+            <button class="btn btn-ghost" onclick="detectLocation()" style="flex-shrink:0;">
+                <i data-lucide="map-pin"></i> Detect
+            </button>
+        </div>
+        <div id="locationStatus" style="font-size:12px;color:var(--text-muted);margin-top:4px;"></div>
+        <input type="hidden" id="listLat">
+        <input type="hidden" id="listLng">
+
+        <label>Photos (up to 5)</label>
+        <input type="file" id="listImages" accept="image/*" multiple style="margin-bottom:8px;">
+        <div id="imagePreviewRow" class="listing-image-preview-row"></div>
+
+        <div class="settings-msg" id="createListingMsg" style="display:none;"></div>
+        <div class="modal-actions">
+            <button class="btn btn-ghost" onclick="closeCreateListing()">Cancel</button>
+            <button class="btn btn-primary" onclick="submitListing()">Post Listing</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let _marketSort = "recent";
+let _marketCat  = "";
+let _marketDelay = null;
+let _userLat = null, _userLng = null;
+
+function esc(s) { return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+function csrfFetch(url, opts={}) {
+    const token = document.querySelector('meta[name="csrf-token"]')?.content;
+    return fetch(url, {...opts, headers:{...(opts.headers||{}), ...(token?{"X-CSRFToken":token}:{})}});
+}
+
+const CATEGORY_ICONS = {
+    vehicle:"car", parts:"wrench", wheels:"disc",
+    electronics:"cpu", accessories:"package", apparel:"shirt"
+};
+const CONDITION_LABELS = {
+    new:"New", like_new:"Like New", good:"Good", fair:"Fair", parts_only:"Parts Only"
+};
+
+function debounceMarket() {
+    clearTimeout(_marketDelay);
+    _marketDelay = setTimeout(loadListings, 400);
+}
+function setMarketSort(s) {
+    _marketSort = s;
+    document.querySelectorAll(".sort-btn").forEach(b => b.classList.remove("active"));
+    document.getElementById(`sort-${s}`).classList.add("active");
+    if (s === "nearest") requestLocation(loadListings);
+    else loadListings();
+}
+function setCatFilter(el, cat) {
+    _marketCat = cat;
+    document.querySelectorAll(".filter-chip").forEach(b => b.classList.remove("active"));
+    el.classList.add("active");
+    loadListings();
+}
+
+function requestLocation(cb) {
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(pos => {
+            _userLat = pos.coords.latitude;
+            _userLng = pos.coords.longitude;
+            cb();
+        }, () => cb());
+    } else cb();
+}
+
+async function loadListings() {
+    const q      = document.getElementById("marketSearch").value.trim();
+    const params = new URLSearchParams({ sort: _marketSort });
+    if (_marketCat) params.set("category", _marketCat);
+    if (q)          params.set("q", q);
+    if (_userLat)   { params.set("lat", _userLat); params.set("lng", _userLng); }
+
+    const grid = document.getElementById("listingsGrid");
+    grid.innerHTML = '<div class="explore-loading"><i data-lucide="loader"></i> Loading…</div>';
+    if (window.refreshIcons) window.refreshIcons();
+
+    const res      = await fetch(`/api/listings?${params}`);
+    const listings = await res.json();
+
+    if (!listings.length) {
+        grid.innerHTML = '<div class="explore-empty"><i data-lucide="package-x"></i><p>No listings found</p></div>';
+        if (window.refreshIcons) window.refreshIcons();
+        return;
+    }
+
+    grid.innerHTML = listings.map(l => listingCard(l)).join("");
+    if (window.refreshIcons) window.refreshIcons();
+}
+
+function listingCard(l) {
+    const img     = l.images && l.images.length ? l.images[0] : null;
+    const icon    = CATEGORY_ICONS[l.category] || "package";
+    const cond    = CONDITION_LABELS[l.condition] || l.condition;
+    const dist    = l.distance !== undefined ? `<span class="listing-dist"><i data-lucide="map-pin"></i>${l.distance} mi</span>` : "";
+    const sold    = l.status === "sold";
+
+    return `
+        <div class="listing-card ${sold ? 'sold' : ''}" onclick="window.location.href='/theshop/listing/${l.id}'">
+            <div class="listing-card-img">
+                ${img ? `<img src="${esc(img)}" loading="lazy" onerror="this.parentElement.innerHTML='<div class=listing-no-img><i data-lucide=\\'${icon}\\'></i></div>'">` :
+                  `<div class="listing-no-img"><i data-lucide="${icon}"></i></div>`}
+                ${sold ? '<div class="sold-overlay">SOLD</div>' : ''}
+                <button class="listing-save-btn ${l.is_saved ? 'saved' : ''}"
+                    id="save-listing-${l.id}"
+                    onclick="event.stopPropagation(); toggleSaveListing(${l.id})"
+                    title="${l.is_saved ? 'Unsave' : 'Save'}">
+                    <i data-lucide="${l.is_saved ? 'bookmark-check' : 'bookmark'}"></i>
+                </button>
+            </div>
+            <div class="listing-card-body">
+                <div class="listing-card-title">${esc(l.title)}</div>
+                <div class="listing-card-price">$${Number(l.price).toLocaleString()}</div>
+                <div class="listing-card-meta">
+                    <span class="listing-cat-badge"><i data-lucide="${icon}"></i>${esc(l.category)}</span>
+                    <span class="listing-cond">${esc(cond)}</span>
+                </div>
+                <div class="listing-card-footer">
+                    <span>@${esc(l.username)}</span>
+                    ${dist}
+                    ${l.location ? `<span><i data-lucide="map-pin"></i>${esc(l.location)}</span>` : ""}
+                </div>
+            </div>
+        </div>`;
+}
+
+async function toggleSaveListing(id) {
+    const res  = await csrfFetch(`/api/listings/${id}/save`, { method: "POST" });
+    const data = await res.json();
+    const btn  = document.getElementById(`save-listing-${id}`);
+    if (btn) {
+        btn.className = `listing-save-btn ${data.saved ? 'saved' : ''}`;
+        btn.innerHTML = `<i data-lucide="${data.saved ? 'bookmark-check' : 'bookmark'}"></i>`;
+        if (window.refreshIcons) window.refreshIcons();
+    }
+}
+
+// ─── Create Listing ───────────────────────────────────────────────
+function openCreateListing() { document.getElementById("createListingModal").style.display = "flex"; }
+function closeCreateListing() { document.getElementById("createListingModal").style.display = "none"; }
+
+function detectLocation() {
+    const status = document.getElementById("locationStatus");
+    status.textContent = "Detecting…";
+    navigator.geolocation?.getCurrentPosition(pos => {
+        _userLat = pos.coords.latitude;
+        _userLng = pos.coords.longitude;
+        document.getElementById("listLat").value = _userLat;
+        document.getElementById("listLng").value = _userLng;
+        // Reverse geocode using nominatim
+        fetch(`https://nominatim.openstreetmap.org/reverse?lat=${_userLat}&lon=${_userLng}&format=json`)
+            .then(r => r.json())
+            .then(d => {
+                const city  = d.address?.city || d.address?.town || d.address?.village || "";
+                const state = d.address?.state || "";
+                const loc   = [city, state].filter(Boolean).join(", ");
+                document.getElementById("listLocation").value = loc;
+                status.textContent = `📍 ${loc}`;
+            }).catch(() => { status.textContent = "Location detected"; });
+    }, () => { status.textContent = "Could not detect location"; });
+}
+
+document.getElementById("listImages")?.addEventListener("change", function() {
+    const preview = document.getElementById("imagePreviewRow");
+    preview.innerHTML = "";
+    Array.from(this.files).slice(0, 5).forEach(file => {
+        const reader = new FileReader();
+        reader.onload = e => {
+            const img = document.createElement("img");
+            img.src = e.target.result;
+            img.className = "listing-preview-thumb";
+            preview.appendChild(img);
+        };
+        reader.readAsDataURL(file);
+    });
+});
+
+async function submitListing() {
+    const title    = document.getElementById("listTitle").value.trim();
+    const category = document.getElementById("listCategory").value;
+    const price    = document.getElementById("listPrice").value;
+    const msg      = document.getElementById("createListingMsg");
+
+    if (!title || !category || !price) {
+        msg.textContent = "Title, category and price are required";
+        msg.className = "settings-msg error";
+        msg.style.display = "block";
+        return;
+    }
+
+    const fd = new FormData();
+    fd.append("title",     title);
+    fd.append("category",  category);
+    fd.append("condition", document.getElementById("listCondition").value);
+    fd.append("price",     price);
+    fd.append("description", document.getElementById("listDesc").value.trim());
+    fd.append("location",  document.getElementById("listLocation").value.trim());
+    fd.append("lat",       document.getElementById("listLat").value);
+    fd.append("lng",       document.getElementById("listLng").value);
+
+    const files = document.getElementById("listImages").files;
+    Array.from(files).slice(0, 5).forEach((f, i) => fd.append(`image${i}`, f));
+
+    const token = document.querySelector('meta[name="csrf-token"]')?.content;
+    const res   = await fetch("/api/listings/create", {
+        method: "POST",
+        headers: token ? { "X-CSRFToken": token } : {},
+        body: fd
+    });
+    const data = await res.json();
+    if (data.error) {
+        msg.textContent = data.error;
+        msg.className = "settings-msg error";
+        msg.style.display = "block";
+        return;
+    }
+    closeCreateListing();
+    window.location.href = `/theshop/listing/${data.id}`;
+}
+
+// ─── My listings ──────────────────────────────────────────────────
+async function showMyListings() {
+    document.getElementById("myListingsModal").style.display = "flex";
+    const res  = await fetch("/api/listings/my");
+    const list = await res.json();
+    const el   = document.getElementById("myListingsList");
+    el.innerHTML = list.map(l => `
+        <div class="my-listing-row">
+            <div class="my-listing-info" onclick="window.location.href='/theshop/listing/${l.id}'">
+                ${l.images?.[0] ? `<img src="${esc(l.images[0])}" class="my-listing-thumb">` : ""}
+                <div>
+                    <div class="my-listing-title">${esc(l.title)}</div>
+                    <div class="my-listing-price">$${Number(l.price).toLocaleString()} · ${l.status}</div>
+                </div>
+            </div>
+            <div style="display:flex;gap:6px;flex-shrink:0;">
+                ${l.status === 'active' ? `<button class="btn btn-ghost" style="font-size:12px;padding:5px 10px;" onclick="markSold(${l.id})">Mark Sold</button>` : ""}
+                <button class="btn btn-danger" style="font-size:12px;padding:5px 10px;" onclick="deleteListing(${l.id})">Delete</button>
+            </div>
+        </div>
+    `).join("") || "<p style='color:var(--text-muted);'>No listings yet</p>";
+}
+
+async function markSold(id) {
+    await csrfFetch(`/api/listings/${id}/mark_sold`, { method: "POST" });
+    showMyListings();
+    loadListings();
+}
+async function deleteListing(id) {
+    if (!confirm("Delete this listing?")) return;
+    await csrfFetch(`/api/listings/${id}/delete`, { method: "POST" });
+    showMyListings();
+    loadListings();
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+    loadListings();
+    // Check if user has listings
+    fetch("/api/listings/my").then(r => r.json()).then(list => {
+        if (list.length) document.getElementById("myListingsBar").style.display = "flex";
+    });
+});
+</script>
+{% endblock %}

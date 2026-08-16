@@ -1,233 +1,1129 @@
+// ─── CSRF-aware fetch helper ─────────────────────────────────────
+function csrfFetch(url, options = {}) {
+    const token = document.querySelector('meta[name="csrf-token"]')?.content;
+    return fetch(url, {
+        ...options,
+        headers: {
+            ...(options.headers || {}),
+            ...(token ? { "X-CSRFToken": token } : {})
+        }
+    });
+}
+
 let posts = [];
 
+
+// ─── Profile Dropdown ────────────────────────────────────────────
+function toggleProfileMenu() {
+    const menu    = document.getElementById("profileDropdownMenu");
+    const chevron = document.getElementById("profileChevron");
+    const open    = menu.style.display !== "none";
+    menu.style.display = open ? "none" : "block";
+    if (chevron) chevron.style.transform = open ? "" : "rotate(180deg)";
+    if (!open && window.refreshIcons) window.refreshIcons();
+}
+
+// Close profile dropdown when clicking outside
+document.addEventListener("click", e => {
+    const wrap = document.getElementById("profileDropdownWrap");
+    if (wrap && !wrap.contains(e.target)) {
+        const menu = document.getElementById("profileDropdownMenu");
+        const chev = document.getElementById("profileChevron");
+        if (menu) menu.style.display = "none";
+        if (chev) chev.style.transform = "";
+    }
+});
+
+// ─── Post Composer ────────────────────────────────────────────────
+function expandComposer() {
+    document.getElementById("composerPlaceholder").style.display = "none";
+    document.getElementById("composerExpanded").style.display = "block";
+    document.getElementById("composerTitle").focus();
+    if (window.refreshIcons) window.refreshIcons();
+}
+
+function collapseComposer() {
+    document.getElementById("composerExpanded").style.display = "none";
+    document.getElementById("composerPlaceholder").style.display = "block";
+    document.getElementById("composerBody").value  = "";
+    document.getElementById("composerTitle").value = "";
+    removeComposerImage();
+    removeComposerVideo();
+    removeComposerGif();
+    clearLinkPreview();
+    document.getElementById("composerGifPicker").style.display  = "none";
+    document.getElementById("composerLinkEmbed").style.display  = "none";
+}
+
+// ─── Video ────────────────────────────────────────────────────────
+function previewComposerVideo(input) {
+    if (!input.files || !input.files[0]) return;
+    const url = URL.createObjectURL(input.files[0]);
+    document.getElementById("composerPreviewVideo").src = url;
+    document.getElementById("composerVideoPreview").style.display = "block";
+    // Clear other media
+    removeComposerImage();
+    removeComposerGif();
+    clearLinkPreview();
+}
+function removeComposerVideo() {
+    const input = document.getElementById("composerVideo");
+    if (input) input.value = "";
+    const vid = document.getElementById("composerPreviewVideo");
+    if (vid) { vid.src = ""; }
+    const wrap = document.getElementById("composerVideoPreview");
+    if (wrap) wrap.style.display = "none";
+}
+
+// ─── GIF ──────────────────────────────────────────────────────────
+let _selectedGifUrl = "";
+let _gifSearchTimer = null;
+
+function toggleGifPicker() {
+    const picker = document.getElementById("composerGifPicker");
+    const open   = picker.style.display !== "none";
+    picker.style.display = open ? "none" : "block";
+    if (!open) {
+        document.getElementById("gifSearchInput").focus();
+        searchGifs("car");  // default search
+    }
+}
+
+function searchGifs(q) {
+    clearTimeout(_gifSearchTimer);
+    _gifSearchTimer = setTimeout(async () => {
+        if (!q) return;
+        const res  = await fetch(`/api/gif_search?q=${encodeURIComponent(q)}`);
+        const gifs = await res.json();
+        const grid = document.getElementById("gifResults");
+        if (!grid) return;
+        grid.innerHTML = gifs.map(g => `
+            <img src="${esc(g.preview || g.url)}" class="gif-result"
+                 onclick="selectGif('${esc(g.url)}')"
+                 loading="lazy">
+        `).join("");
+    }, 400);
+}
+
+function selectGif(url) {
+    _selectedGifUrl = url;
+
+    // Clear other media first
+    removeComposerImage();
+    removeComposerVideo();
+    clearLinkPreview();
+
+    // Hide picker, show preview below composer
+    document.getElementById("composerGifPicker").style.display = "none";
+
+    // Show selected GIF preview
+    const preview = document.getElementById("composerGifPreview");
+    const img     = document.getElementById("composerSelectedGif");
+    img.src = url;
+    preview.style.display = "block";
+}
+
+function removeComposerGif() {
+    _selectedGifUrl = "";
+    const el = document.getElementById("composerGifPreview");
+    if (el) el.style.display = "none";
+    const img = document.getElementById("composerSelectedGif");
+    if (img) img.src = "";
+}
+
+// ─── Link embed ───────────────────────────────────────────────────
+let _linkData = null;
+
+function toggleLinkEmbed() {
+    const panel = document.getElementById("composerLinkEmbed");
+    panel.style.display = panel.style.display !== "none" ? "none" : "block";
+    if (panel.style.display === "block") {
+        document.getElementById("linkUrlInput")?.focus();
+    }
+}
+
+async function fetchLinkPreview() {
+    const url = document.getElementById("linkUrlInput")?.value.trim();
+    if (!url) return;
+    const preview = document.getElementById("composerLinkPreview");
+    preview.innerHTML = `<p style="color:var(--text-muted);font-size:13px;">Loading preview…</p>`;
+    preview.style.display = "block";
+
+    const res  = await csrfFetch("/api/link_preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url })
+    });
+    const data = await res.json();
+    if (data.error) {
+        preview.innerHTML = `<p style="color:var(--red);font-size:13px;">Could not load preview</p>`;
+        return;
+    }
+    _linkData = data;
+    preview.innerHTML = `
+        <div class="link-preview-card">
+            ${data.image ? `<img src="${esc(data.image)}" class="link-preview-img" onerror="this.style.display='none'">` : ""}
+            <div class="link-preview-body">
+                <div class="link-preview-title">${esc(data.title)}</div>
+                ${data.description ? `<div class="link-preview-desc">${esc(data.description)}</div>` : ""}
+                <div class="link-preview-url">${esc(data.url)}</div>
+            </div>
+            <button class="remove-preview-btn" onclick="clearLinkPreview()"><i data-lucide="x"></i></button>
+        </div>
+    `;
+    if (window.refreshIcons) window.refreshIcons();
+    // Clear other media
+    removeComposerImage();
+    removeComposerVideo();
+    removeComposerGif();
+}
+
+function clearLinkPreview() {
+    _linkData = null;
+    const input = document.getElementById("linkUrlInput");
+    if (input) input.value = "";
+    const preview = document.getElementById("composerLinkPreview");
+    if (preview) { preview.style.display = "none"; preview.innerHTML = ""; }
+}
+
+function onComposerInput() {
+    // auto-expand textarea
+    const ta = document.getElementById("composerBody");
+    ta.style.height = "auto";
+    ta.style.height = ta.scrollHeight + "px";
+}
+
+function previewComposerImage(input) {
+    if (!input.files || !input.files[0]) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+        document.getElementById("composerPreviewImg").src = e.target.result;
+        document.getElementById("composerImagePreview").style.display = "block";
+    };
+    reader.readAsDataURL(input.files[0]);
+}
+
+function removeComposerImage() {
+    document.getElementById("composerImage").value = "";
+    document.getElementById("composerPreviewImg").src = "";
+    document.getElementById("composerImagePreview").style.display = "none";
+}
+
+// ─── Poll builder ───────────────────────────────────────────────
+let _pollActive = false;
+
+function togglePollBuilder() {
+    _pollActive = !_pollActive;
+    const builder = document.getElementById("composerPollBuilder");
+    const btn     = document.getElementById("pollToolBtn");
+    builder.style.display = _pollActive ? "block" : "none";
+    btn.classList.toggle("active", _pollActive);
+    if (!_pollActive) {
+        document.getElementById("pollQuestion").value = "";
+        document.querySelectorAll(".poll-option-input").forEach((el, i) => {
+            el.value = "";
+            el.placeholder = `Option ${i + 1}`;
+        });
+        // Reset to 2 options
+        const list = document.getElementById("pollOptionsList");
+        while (list.children.length > 2) list.removeChild(list.lastChild);
+    }
+    if (window.refreshIcons) window.refreshIcons();
+}
+
+function addPollOption() {
+    const list = document.getElementById("pollOptionsList");
+    if (list.children.length >= 4) return;
+    const idx = list.children.length + 1;
+    const row = document.createElement("div");
+    row.className = "poll-option-row";
+    row.innerHTML = `
+        <input class="composer-field poll-option-input" placeholder="Option ${idx}">
+        <button class="poll-remove-btn" onclick="removePollOption(this)" type="button"><i data-lucide="x"></i></button>
+    `;
+    list.appendChild(row);
+    if (window.refreshIcons) window.refreshIcons();
+}
+
+function removePollOption(btn) {
+    const list = document.getElementById("pollOptionsList");
+    if (list.children.length <= 2) return;
+    btn.closest(".poll-option-row").remove();
+    // Re-number placeholders
+    list.querySelectorAll(".poll-option-input").forEach((el, i) => {
+        if (!el.value) el.placeholder = `Option ${i + 1}`;
+    });
+}
+
+async function submitComposerPost() {
+    const body      = document.getElementById("composerBody")?.value.trim();
+    const title     = document.getElementById("composerTitle")?.value.trim();
+    const imageFile = document.getElementById("composerImage")?.files[0];
+    const videoFile = document.getElementById("composerVideo")?.files[0];
+
+    if (!title) {
+        const titleEl = document.getElementById("composerTitle");
+        titleEl.focus();
+        titleEl.style.borderColor = "var(--red)";
+        titleEl.placeholder = "Title is required";
+        setTimeout(() => { titleEl.style.borderColor = ""; titleEl.placeholder = "Title"; }, 3000);
+        return;
+    }
+    if (!body) {
+        const bodyEl = document.getElementById("composerBody");
+        bodyEl.focus();
+        bodyEl.style.borderColor = "var(--red)";
+        bodyEl.placeholder = "Write something…";
+        setTimeout(() => { bodyEl.style.borderColor = ""; bodyEl.placeholder = "What's going on today, friend?"; }, 3000);
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append("body",  body);
+    formData.append("car",   "");
+    formData.append("title", title || "");
+
+    if (imageFile)       formData.append("image", imageFile);
+    if (videoFile)       formData.append("video", videoFile);
+    if (_selectedGifUrl) formData.append("gif_url", _selectedGifUrl);
+    if (_linkData) {
+        formData.append("link_url",         _linkData.url || "");
+        formData.append("link_title",       _linkData.title || "");
+        formData.append("link_image",       _linkData.image || "");
+        formData.append("link_description", _linkData.description || "");
+    }
+
+    // Poll
+    if (_pollActive) {
+        const question = document.getElementById("pollQuestion").value.trim();
+        const opts = [...document.querySelectorAll(".poll-option-input")]
+            .map(el => el.value.trim()).filter(Boolean);
+        if (question && opts.length >= 2) {
+            formData.append("poll_question", question);
+            formData.append("poll_options",  JSON.stringify(opts));
+        }
+    }
+
+    const token = document.querySelector('meta[name="csrf-token"]')?.content;
+    await fetch("/add_post", {
+        method: "POST",
+        headers: token ? { "X-CSRFToken": token } : {},
+        body: formData
+    });
+
+    _pollActive = false;
+    collapseComposer();
+    await loadPosts();
+    loadTrendingNews();
+    if (window.refreshIcons) window.refreshIcons();
+}
+
+// ─── Poll rendering ─────────────────────────────────────────────
+function renderPoll(post) {
+    if (!post.poll_question || !post.poll_options) return "";
+    let opts;
+    try { opts = JSON.parse(post.poll_options); } catch { return ""; }
+    const counts    = post.poll_vote_counts || opts.map(() => 0);
+    const total     = post.poll_total_votes || 0;
+    const userVote  = post.poll_user_vote;
+    const hasVoted  = userVote !== null && userVote !== undefined;
+
+    const bars = opts.map((opt, i) => {
+        const count = counts[i] || 0;
+        const pct   = total > 0 ? Math.round((count / total) * 100) : 0;
+        const active = hasVoted && userVote === i;
+        return `
+            <div class="poll-option ${hasVoted ? 'voted' : ''} ${active ? 'poll-winner' : ''}"
+                 ${!hasVoted ? `onclick="votePoll(${post.id}, ${i}, this)"` : ""}
+                 data-post="${post.id}" data-idx="${i}">
+                <div class="poll-bar" style="width:${hasVoted ? pct : 0}%"></div>
+                <span class="poll-label">${esc(opt)}</span>
+                ${hasVoted ? `<span class="poll-pct">${pct}%</span>` : ""}
+            </div>`;
+    }).join("");
+
+    return `
+        <div class="post-poll" id="poll-${post.id}">
+            <div class="poll-question">${esc(post.poll_question)}</div>
+            <div class="poll-options">${bars}</div>
+            <div class="poll-meta" id="poll-meta-${post.id}">${total} vote${total !== 1 ? "s" : ""}</div>
+        </div>`;
+}
+
+async function votePoll(postId, optionIndex, el) {
+    const res  = await csrfFetch(`/api/vote_poll/${postId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ option_index: optionIndex })
+    });
+    const data = await res.json();
+    if (data.error) return;
+
+    const poll = document.getElementById(`poll-${postId}`);
+    if (!poll) return;
+    const opts = poll.querySelectorAll(".poll-option");
+    const total = data.total_votes;
+    opts.forEach((opt, i) => {
+        const pct = total > 0 ? Math.round((data.vote_counts[i] / total) * 100) : 0;
+        opt.classList.add("voted");
+        opt.classList.toggle("poll-winner", i === data.user_vote);
+        opt.onclick = null;
+        opt.querySelector(".poll-bar").style.width = pct + "%";
+        if (!opt.querySelector(".poll-pct")) {
+            const sp = document.createElement("span");
+            sp.className = "poll-pct";
+            opt.appendChild(sp);
+        }
+        opt.querySelector(".poll-pct").textContent = pct + "%";
+    });
+    const meta = document.getElementById(`poll-meta-${postId}`);
+    if (meta) meta.textContent = `${total} vote${total !== 1 ? "s" : ""}`;
+}
+
+// ─── Post Card ──────────────────────────────────────────────────
 function createPostCard(post) {
-    const postCard = document.createElement("div");
-    postCard.classList.add("post-card");
-
-    postCard.innerHTML = `
+    const card = document.createElement("div");
+    card.classList.add("post-card");
+    card.innerHTML = `
         <div class="post-header">
-            <p class="username">@${post.username}</p>
-            <p class="user-car" onclick="filterByCar('${post.car}')">${post.car}</p>
-            <p class="time">${post.time}</p>
+            <div class="post-author">
+                <span class="username" onclick="window.location.href='/profile/${esc(post.username)}'">@${esc(post.username)}</span>
+                ${post.main_car ? `<span class="post-user-car"><i data-lucide="car"></i>${esc(post.main_car)}</span>` : ""}
+            </div>
+            <span class="time">${esc(post.time)}</span>
         </div>
-
-        <h2 class="post-title">${post.title}</h2>
-        <p>${post.body}</p>
-
-        ${post.image ? `<img src="${post.image}" class="post-image">` : ""}
-
+        <h2 class="post-title">${esc(post.title)}</h2>
+        <p class="post-body">${esc(post.body)}</p>
+        ${post.image       ? `<img src="${esc(post.image)}" class="post-image" loading="lazy">` : ""}
+        ${post.gif_url     ? `<img src="${esc(post.gif_url)}" class="post-image post-gif" loading="lazy">` : ""}
+        ${post.video_url   ? `<video src="${esc(post.video_url)}" class="post-video" controls playsinline preload="metadata"></video>` : ""}
+        ${post.link_url    ? `
+            <a href="${esc(post.link_url)}" target="_blank" rel="noopener" class="post-link-card">
+                ${post.link_image ? `<img src="${esc(post.link_image)}" class="post-link-img" onerror="this.style.display='none'">` : ""}
+                <div class="post-link-body">
+                    <div class="post-link-title">${esc(post.link_title || post.link_url)}</div>
+                    ${post.link_description ? `<div class="post-link-desc">${esc(post.link_description)}</div>` : ""}
+                    <div class="post-link-url">${esc(post.link_url)}</div>
+                </div>
+            </a>` : ""}
+        ${renderPoll(post)}
         <div class="post-actions">
-            <button onclick="likePost(${post.id})" id="like-btn-${post.id}">
-            ▲ ${post.likes}</button>
-            <button onclick="toggleComments(${post.id})">Comment</button>
-            <button>Save</button>
-            <button>Share</button>
+            <div class="vote-buttons">
+                <button class="like-btn ${post.user_liked ? 'active' : ''}" id="like-btn-${post.id}" onclick="likePost(${post.id})"><i data-lucide="thumbs-up"></i> ${post.likes || 0}</button>
+                <button class="dislike-btn ${post.user_disliked ? 'active' : ''}" id="dislike-btn-${post.id}" onclick="dislikePost(${post.id})"><i data-lucide="thumbs-down"></i> ${post.dislikes || 0}</button>
+            </div>
+            <button onclick="toggleComments(${post.id})"><i data-lucide="message-circle"></i> ${post.comment_count > 0 ? post.comment_count + ' ' : ''}Comment${post.comment_count !== 1 ? 's' : ''}</button>
+            <button onclick="sharePost(${post.id})"><i data-lucide="share-2"></i> Share</button>
+            <button class="save-btn" id="save-btn-${post.id}" onclick="toggleSavePost(${post.id})" title="Save post"><i data-lucide="bookmark"></i></button>
         </div>
-        <div id="comments-${post.id}" class="comments-section" style="display: none;">
+        <div id="comments-${post.id}" class="comments-section" style="display:none;">
             <div id="comments-list-${post.id}"></div>
-
-            <input id="comment-user-${post.id}" placeholder="Username">
-            <input id="comment-body-${post.id}" placeholder="Write a comment...">
+            <input id="comment-body-${post.id}" placeholder="Write a comment…">
             <button onclick="submitComment(${post.id})">Post Comment</button>
         </div>
-        
     `;
+    if (window.refreshIcons) window.refreshIcons();
+    return card;
+}
 
-    return postCard;
+async function toggleSavePost(postId) {
+    const btn = document.getElementById(`save-btn-${postId}`);
+    const res  = await csrfFetch(`/toggle_save_post/${postId}`, { method: "POST" });
+    const data = await res.json();
+    if (btn) {
+        btn.classList.toggle("saved", data.saved);
+        btn.innerHTML = data.saved
+            ? '<i data-lucide="bookmark-check"></i>'
+            : '<i data-lucide="bookmark"></i>';
+        if (window.refreshIcons) window.refreshIcons();
+    }
+}
+
+function esc(str) {
+    if (str == null) return "";
+    return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
 }
 
 function filterByCar(carName) {
     const feed = document.getElementById("feed");
+    if (!feed) return;
     feed.innerHTML = "";
-
-    const filteredPosts = posts.filter(post => post.car === carName);
-
-    filteredPosts.forEach(post => {
-        feed.appendChild(createPostCard(post));
-    });
+    posts.filter(p => p.car === carName).forEach(p => feed.appendChild(createPostCard(p)));
 }
 
 async function likePost(postId) {
-    const likedPosts = JSON.parse(localStorage.getItem("likedPosts")) || [];
-
-    if (likedPosts.includes(postId)) {
-        alert("You already liked this post.");
-        return;
-    }
-
-    await fetch(`/like_post/${postId}`, {
-        method: "POST"
-    });
-
-    likedPosts.push(postId);
-    localStorage.setItem("likedPosts", JSON.stringify(likedPosts));
-
-    loadPosts();
+    const res  = await csrfFetch(`/like_post/${postId}`, { method: "POST" });
+    const data = await res.json();
+    await refreshPostCounts(postId);
 }
 
-async function toggleComments(postId) {
-    const section = document.getElementById(`comments-${postId}`);
+async function dislikePost(postId) {
+    const res  = await csrfFetch(`/dislike_post/${postId}`, { method: "POST" });
+    const data = await res.json();
+    await refreshPostCounts(postId);
+}
 
+// Fetch fresh counts from server for a single post and update buttons
+async function refreshPostCounts(postId) {
+    const res  = await fetch(`/get_post_counts/${postId}`);
+    const data = await res.json();
+
+    const likeBtn    = document.getElementById(`like-btn-${postId}`);
+    const dislikeBtn = document.getElementById(`dislike-btn-${postId}`);
+
+    if (likeBtn) {
+        likeBtn.innerHTML = `<i data-lucide="thumbs-up"></i> ${data.likes}`;
+        likeBtn.classList.toggle("active", !!data.user_liked);
+    }
+    if (dislikeBtn) {
+        dislikeBtn.innerHTML = `<i data-lucide="thumbs-down"></i> ${data.dislikes}`;
+        dislikeBtn.classList.toggle("active", !!data.user_disliked);
+    }
+    if (window.refreshIcons) window.refreshIcons();
+}
+
+function toggleComments(postId) {
+    const section = document.getElementById(`comments-${postId}`);
     if (section.style.display === "none") {
         section.style.display = "block";
-        await loadComments(postId);
+        loadComments(postId);
     } else {
         section.style.display = "none";
     }
 }
 
 async function loadComments(postId) {
-    const response = await fetch(`/get_comments/${postId}`);
-    const comments = await response.json();
+    const res      = await fetch(`/get_comments/${postId}`);
+    const comments = await res.json();
+    const container = document.getElementById(`comments-list-${postId}`);
+    if (!container) return;
+    container.innerHTML = "";
 
-    const commentsList = document.getElementById(`comments-list-${postId}`);
-    commentsList.innerHTML = "";
-
-    comments.forEach(comment => {
+    comments.forEach(c => {
         const div = document.createElement("div");
         div.classList.add("comment");
-
+        div.id = `comment-${c.id}`;
         div.innerHTML = `
-            <p><strong>@${comment.username}</strong></p>
-            <p>${comment.body}</p>
+            <div class="comment-author">
+                <span class="username" onclick="window.location.href='/profile/${esc(c.username)}'">@${esc(c.username)}</span>
+                ${c.main_car ? `<span class="post-user-car"><i data-lucide="car"></i>${esc(c.main_car)}</span>` : ""}
+            </div>
+            <p class="comment-body">${esc(c.body)}</p>
+            <div class="comment-actions">
+                <div class="vote-buttons">
+                    <button class="like-btn ${c.user_liked ? 'active' : ''}" id="clike-${c.id}" onclick="likeComment(${c.id})">
+                        <i data-lucide="thumbs-up"></i> ${c.likes || 0}
+                    </button>
+                    <button class="dislike-btn ${c.user_disliked ? 'active' : ''}" id="cdislike-${c.id}" onclick="dislikeComment(${c.id})">
+                        <i data-lucide="thumbs-down"></i> ${c.dislikes || 0}
+                    </button>
+                </div>
+                <button class="reply-toggle-btn" onclick="toggleReplyBox(${c.id}, ${postId})">
+                    <i data-lucide="corner-down-right"></i>
+                    ${c.reply_count > 0 ? c.reply_count + ' ' : ''}Repl${c.reply_count !== 1 ? 'ies' : 'y'}
+                </button>
+            </div>
+            <div class="replies-section" id="replies-${c.id}" style="display:none;">
+                <div class="replies-list" id="replies-list-${c.id}"></div>
+                <div class="reply-input-row">
+                    <input id="reply-input-${c.id}" placeholder="Write a reply…" onkeydown="if(event.key==='Enter') submitReply(${c.id}, ${postId})">
+                    <button onclick="submitReply(${c.id}, ${postId})"><i data-lucide="send"></i></button>
+                </div>
+            </div>
         `;
-
-        commentsList.appendChild(div);
+        container.appendChild(div);
     });
+    if (window.refreshIcons) window.refreshIcons();
+}
+
+async function likeComment(commentId) {
+    await csrfFetch(`/like_comment/${commentId}`, { method: "POST" });
+    await refreshCommentVotes(commentId);
+}
+
+async function dislikeComment(commentId) {
+    await csrfFetch(`/dislike_comment/${commentId}`, { method: "POST" });
+    await refreshCommentVotes(commentId);
+}
+
+async function refreshCommentVotes(commentId) {
+    const res  = await fetch(`/get_comment_counts/${commentId}`);
+    const data = await res.json();
+    const lb   = document.getElementById(`clike-${commentId}`);
+    const db   = document.getElementById(`cdislike-${commentId}`);
+    if (lb) { lb.innerHTML = `<i data-lucide="thumbs-up"></i> ${data.likes}`; lb.classList.toggle("active", !!data.user_liked); }
+    if (db) { db.innerHTML = `<i data-lucide="thumbs-down"></i> ${data.dislikes}`; db.classList.toggle("active", !!data.user_disliked); }
+    if (window.refreshIcons) window.refreshIcons();
+}
+
+function toggleReplyBox(commentId, postId) {
+    const section = document.getElementById(`replies-${commentId}`);
+    if (!section) return;
+    const open = section.style.display !== "none";
+    section.style.display = open ? "none" : "block";
+    if (!open) loadReplies(commentId);
+}
+
+async function loadReplies(commentId) {
+    const res     = await fetch(`/get_replies/${commentId}`);
+    const replies = await res.json();
+    const list    = document.getElementById(`replies-list-${commentId}`);
+    if (!list) return;
+    list.innerHTML = replies.map(r => `
+        <div class="reply">
+            <div class="comment-author">
+                <span class="username" onclick="window.location.href='/profile/${esc(r.username)}'">@${esc(r.username)}</span>
+                ${r.main_car ? `<span class="post-user-car"><i data-lucide="car"></i>${esc(r.main_car)}</span>` : ""}
+            </div>
+            <p class="comment-body">${esc(r.body)}</p>
+            <div class="comment-actions">
+                <div class="vote-buttons">
+                    <button class="like-btn ${r.user_liked ? 'active' : ''}" id="clike-${r.id}" onclick="likeComment(${r.id})">
+                        <i data-lucide="thumbs-up"></i> ${r.likes || 0}
+                    </button>
+                    <button class="dislike-btn ${r.user_disliked ? 'active' : ''}" id="cdislike-${r.id}" onclick="dislikeComment(${r.id})">
+                        <i data-lucide="thumbs-down"></i> ${r.dislikes || 0}
+                    </button>
+                </div>
+            </div>
+        </div>
+    `).join("");
+    if (window.refreshIcons) window.refreshIcons();
+}
+
+async function submitReply(commentId, postId) {
+    const input = document.getElementById(`reply-input-${commentId}`);
+    const body  = input?.value.trim();
+    if (!body) return;
+    const res  = await csrfFetch("/add_comment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ post_id: postId, parent_id: commentId, body })
+    });
+    const data = await res.json();
+    if (data.error) { alert(data.error); return; }
+    input.value = "";
+    await loadReplies(commentId);
+    // update reply count button
+    const replyBtn = document.querySelector(`#comment-${commentId} .reply-toggle-btn`);
+    if (replyBtn) {
+        const res2  = await fetch(`/get_replies/${commentId}`);
+        const reps  = await res2.json();
+        const count = reps.length;
+        replyBtn.innerHTML = `<i data-lucide="corner-down-right"></i> ${count > 0 ? count + ' ' : ''}Repl${count !== 1 ? 'ies' : 'y'}`;
+        if (window.refreshIcons) window.refreshIcons();
+    }
 }
 
 async function submitComment(postId) {
-    const username = document.getElementById(`comment-user-${postId}`).value;
-    const body = document.getElementById(`comment-body-${postId}`).value;
+    const input = document.getElementById(`comment-body-${postId}`);
+    if (!input) return;
+    const body = input.value.trim();
+    if (!body) return;
 
-    await fetch("/add_comment", {
+    const res  = await csrfFetch("/add_comment", {
         method: "POST",
-        headers: {
-            "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-            post_id: postId,
-            username,
-            body
-        })
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ post_id: postId, body })
     });
+    const data = await res.json();
+    if (data.error) { alert(data.error); return; }
 
-    document.getElementById(`comment-body-${postId}`).value = "";
-    loadComments(postId);
+    input.value = "";
+    await loadComments(postId);
+    await refreshCommentCount(postId);
 }
 
-async function loadPosts() {
-    const response = await fetch("/get_posts");
+async function refreshCommentCount(postId) {
+    const res   = await fetch(`/get_comment_count/${postId}`);
+    const data  = await res.json();
+    const count = data.count || 0;
+
+    const commentBtns = document.querySelectorAll(`[onclick="toggleComments(${postId})"]`);
+    commentBtns.forEach(btn => {
+        btn.innerHTML = `<i data-lucide="message-circle"></i> ${count > 0 ? count + ' ' : ''}Comment${count !== 1 ? 's' : ''}`;
+    });
+    if (window.refreshIcons) window.refreshIcons();
+}
+
+
+// ─── Trending Automotive News ─────────────────────────────────────
+let _newsCache = null;
+let _newsCacheTime = 0;
+
+async function loadTrendingNews() {
+    const container = document.getElementById("trendingNews");
+    if (!container) return;
+
+    // Cache for 30 minutes to save API calls
+    const now = Date.now();
+    if (_newsCache && (now - _newsCacheTime) < 30 * 60 * 1000) {
+        renderNews(_newsCache);
+        return;
+    }
+
+    container.innerHTML = '<div class="trending-loading"><i data-lucide="loader"></i> Loading news…</div>';
+    if (window.refreshIcons) window.refreshIcons();
+
+    try {
+        const res     = await fetch("/api/trending_news");
+        const articles = await res.json();
+        if (articles.error) {
+            container.innerHTML = '<div class="trending-loading">News unavailable</div>';
+            return;
+        }
+        _newsCache     = articles;
+        _newsCacheTime = now;
+        renderNews(articles);
+    } catch(e) {
+        container.innerHTML = '<div class="trending-loading">Could not load news</div>';
+    }
+}
+
+function renderNews(articles) {
+    const container = document.getElementById("trendingNews");
+    if (!container) return;
+    if (!articles || articles.length === 0) {
+        container.innerHTML = '<div class="trending-loading">No news found</div>';
+        return;
+    }
+    container.innerHTML = articles.map(a => `
+        <a class="trending-article" href="${esc(a.url)}" target="_blank" rel="noopener">
+            ${a.image ? `<img src="${esc(a.image)}" class="trending-img" loading="lazy" onerror="this.style.display='none'">` : ""}
+            <div class="trending-article-body">
+                <div class="trending-article-title">${esc(a.title)}</div>
+                <div class="trending-article-meta">
+                    <span>${esc(a.source)}</span>
+                    <span>${esc(a.published)}</span>
+                </div>
+            </div>
+        </a>
+    `).join("");
+}
+
+async function loadPosts(query = "") {
+    const url = query ? `/get_posts?q=${encodeURIComponent(query)}` : "/get_posts";
+    const response = await fetch(url);
     posts = await response.json();
-
     const feed = document.getElementById("feed");
+    if (!feed) return;
     feed.innerHTML = "";
-
-    posts.forEach(post => {
-        feed.appendChild(createPostCard(post));
-    });
+    if (posts.length === 0) {
+        feed.innerHTML = `<div class="empty-state">No posts found.</div>`;
+        return;
+    }
+    posts.forEach(post => feed.appendChild(createPostCard(post)));
 }
 
+function sharePost(postId) {
+    const url = `${window.location.origin}/?post=${postId}`;
+    navigator.clipboard.writeText(url).then(() => alert("Link copied!")).catch(() => prompt("Copy this link:", url));
+}
+
+// ─── Post Modal ─────────────────────────────────────────────────
 function openPostModal() {
     document.getElementById("postModal").style.display = "flex";
 }
-
 function closePostModal() {
     document.getElementById("postModal").style.display = "none";
 }
 
 async function submitPost() {
-    const username = document.getElementById("username").value;
-    const car = document.getElementById("car").value;
-    const title = document.getElementById("title").value;
-    const body = document.getElementById("body").value;
-    const image = document.getElementById("image").value;
-
-    await fetch("/add_post", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-    },
-      body: JSON.stringify({
-          username,
-          car,
-          title,
-          body,
-          image
-      })
-    });
-
+    const formData = new FormData();
+    formData.append("car",   document.getElementById("car").value);
+    formData.append("title", document.getElementById("title").value);
+    formData.append("body",  document.getElementById("body").value);
+    const imageFile = document.getElementById("image").files[0];
+    if (imageFile) formData.append("image", imageFile);
+    await csrfFetch("/add_post", { method: "POST", body: formData });
     closePostModal();
+    document.getElementById("car").value   = "";
+    document.getElementById("title").value = "";
+    document.getElementById("body").value  = "";
     loadPosts();
 }
 
-async function loadMods(carId) {
-    const response = await fetch(`/get_mods/${carId}`);
-    const mods = await response.json();
+// ─── Sidebar ─────────────────────────────────────────────────────
+function toggleMenu() {
+    document.getElementById("sidebar").classList.toggle("hidden");
+    document.getElementById("menuOverlay").classList.toggle("show");
+}
+function closeMenu() {
+    document.getElementById("sidebar").classList.add("hidden");
+    document.getElementById("menuOverlay").classList.remove("show");
+}
 
-    const container = document.getElementById(`mods-${carId}`);
-    container.innerHTML = "";
-    container.classList.add("mod-list");
+// ─── Global Search ───────────────────────────────────────────────
+function handleGlobalSearch(e) {
+    if (e.key === "Enter") {
+        const q = document.getElementById("globalSearch").value.trim();
+        if (!q) return;
+        if (document.getElementById("feed")) {
+            loadPosts(q);
+        } else {
+            window.location.href = `/search?q=${encodeURIComponent(q)}`;
+        }
+    }
+}
 
-    let totalCost = 0;
+// ─── Notifications ───────────────────────────────────────────────
+let notifOpen = false;
 
-    mods.forEach(mod => {
-        const cost = Number(mod.cost);
-        totalCost += cost;
-
+async function loadNotifications() {
+    const res = await fetch("/get_notifications");
+    if (!res.ok) return;
+    const notifs = await res.json();
+    const badge = document.getElementById("notifBadge");
+    const list  = document.getElementById("notifList");
+    if (!badge || !list) return;
+    const unread = notifs.filter(n => !n.is_read).length;
+    if (unread > 0) {
+        badge.style.display = "flex";
+        badge.textContent = unread > 9 ? "9+" : unread;
+    } else {
+        badge.style.display = "none";
+    }
+    if (notifs.length === 0) {
+        list.innerHTML = `<div class="notif-empty">No notifications yet</div>`;
+        return;
+    }
+    list.innerHTML = "";
+    notifs.forEach(n => {
         const div = document.createElement("div");
-        div.classList.add("mod-item");
+        div.classList.add("notif-item");
+        if (!n.is_read) div.classList.add("unread");
+        div.innerHTML = `<div>${esc(n.text)}</div><div class="notif-time">${esc(n.created_at)}</div>`;
+        list.appendChild(div);
+    });
+}
 
-        div.innerHTML = `
-            <p><strong>${mod.name}</strong></p>
-            <p>$${cost.toFixed(2)} · ${mod.category}</p>
+function toggleNotifications() {
+    const dropdown = document.getElementById("notifDropdown");
+    notifOpen = !notifOpen;
+    dropdown.classList.toggle("open", notifOpen);
+    if (notifOpen) loadNotifications();
+}
+
+async function markAllRead() {
+    await csrfFetch("/mark_notifications_read", { method: "POST" });
+    loadNotifications();
+}
+
+// close notifications on outside click
+document.addEventListener("click", (e) => {
+    const btn = document.getElementById("notifBtn");
+    const dd  = document.getElementById("notifDropdown");
+    if (btn && dd && !btn.contains(e.target) && !dd.contains(e.target)) {
+        notifOpen = false;
+        dd.classList.remove("open");
+    }
+});
+
+// ─── Weekly Challenge ─────────────────────────────────────────────
+const WEEKLY_CHALLENGES = [
+    {
+        title: "Best Budget Build Under $20k",
+        desc:  "Show us what you've built or dream-built without breaking the bank. Post your ride!",
+        tag:   "#BudgetBuild",
+        prompt:"Check out my budget build 💰 #BudgetBuild #WeeklyChallenge"
+    },
+    {
+        title: "Before & After Transformation",
+        desc:  "Drop a before and after — mods, paint, clean-up, or full build. We want to see the glow-up.",
+        tag:   "#GlowUp",
+        prompt:"Here's my before & after 🔧 #GlowUp #WeeklyChallenge"
+    },
+    {
+        title: "Dream Garage — Pick 3",
+        desc:  "If you could fill a 3-car garage with anything, what's in it? No budget limits.",
+        tag:   "#DreamGarage",
+        prompt:"My dream garage picks 🏎️ #DreamGarage #WeeklyChallenge"
+    },
+    {
+        title: "Show Your Rarest Find",
+        desc:  "Post your weirdest, rarest, or most underrated car — the one people always ask about.",
+        tag:   "#RareFind",
+        prompt:"Here's my rare find 🕵️ #RareFind #WeeklyChallenge"
+    },
+    {
+        title: "First Car Stories",
+        desc:  "Tell us about the first car you ever owned, drove, or fell in love with. The worse the story, the better.",
+        tag:   "#FirstCar",
+        prompt:"My first car story 🚗 #FirstCar #WeeklyChallenge"
+    },
+    {
+        title: "Best Night Drive Setup",
+        desc:  "What's your go-to car for a late night cruise? Show us your setup.",
+        tag:   "#NightDrive",
+        prompt:"My night drive setup 🌙 #NightDrive #WeeklyChallenge"
+    },
+    {
+        title: "Track Day Machine",
+        desc:  "What's your perfect track-ready build — stock or modified? Make the case.",
+        tag:   "#TrackDay",
+        prompt:"My track day machine 🏁 #TrackDay #WeeklyChallenge"
+    },
+    {
+        title: "The Sleeper Build",
+        desc:  "Looks stock but goes like a rocket? Show us the cars that fool everyone at the light.",
+        tag:   "#Sleeper",
+        prompt:"My sleeper build 😴💨 #Sleeper #WeeklyChallenge"
+    },
+];
+
+function getWeekNumber() {
+    const now  = new Date();
+    const start = new Date(now.getFullYear(), 0, 1);
+    return Math.ceil(((now - start) / 86400000 + start.getDay() + 1) / 7);
+}
+
+function loadWeeklyChallenge() {
+    const widget = document.getElementById('challengeWidget');
+    if (!widget) return;
+    const week = getWeekNumber();
+    const c    = WEEKLY_CHALLENGES[week % WEEKLY_CHALLENGES.length];
+    document.getElementById('challengeTitle').textContent = c.title;
+    document.getElementById('challengeDesc').textContent  = c.desc;
+    document.getElementById('challengeWeekLabel').textContent = `Week ${week}`;
+    if (window.lucide) lucide.createIcons();
+}
+
+function joinChallenge() {
+    const week = getWeekNumber();
+    const c    = WEEKLY_CHALLENGES[week % WEEKLY_CHALLENGES.length];
+    // Open the composer with pre-filled title
+    expandComposer();
+    const titleInput = document.getElementById('composerTitle');
+    const bodyInput  = document.getElementById('composerBody');
+    if (titleInput) titleInput.value = c.tag + ' — ' + c.title;
+    if (bodyInput)  bodyInput.value  = c.prompt + '\n\n';
+    titleInput?.focus();
+}
+
+// ─── Stories ──────────────────────────────────────────────────────
+let _stories       = [];
+let _storyIndex    = 0;   // which story (user slot) we're viewing
+let _storyTimer    = null;
+const STORY_DURATION = 6000; // ms per story
+
+async function loadStories() {
+    if (!document.getElementById('storiesStrip')) return;
+    const res     = await fetch('/api/stories');
+    _stories      = await res.json();
+    renderStoryBubbles();
+}
+
+function renderStoryBubbles() {
+    const container = document.getElementById('storyBubbles');
+    if (!container) return;
+    // Others = all stories except own (own is shown in the fixed left bubble)
+    const others = _stories.filter(s => !s.is_own);
+    container.innerHTML = others.map((s, i) => {
+        const letter = (s.username || '?')[0].toUpperCase();
+        const avatarHtml = s.avatar
+            ? `<img src="${s.avatar}" class="story-avatar-img">`
+            : `<div class="story-avatar-init">${letter}</div>`;
+        const ringClass = s.viewed_by_me ? 'seen' : 'unseen';
+        return `
+            <div class="story-bubble-wrap" onclick="openStoryViewer(${i})">
+                <div class="story-bubble">
+                    <div class="story-avatar-ring ${ringClass}">${avatarHtml}</div>
+                </div>
+                <span class="story-label">@${escHtml(s.username)}</span>
+            </div>
         `;
+    }).join('');
 
-        container.appendChild(div);
-    });
+    // Update "Your Story" bubble ring if user has an active story
+    const ownBubble = document.getElementById('myStoryBubble');
+    if (ownBubble) {
+        const ownStory = _stories.find(s => s.is_own);
+        const ring = ownBubble.querySelector('.story-avatar-ring');
+        if (ring) {
+            ring.classList.toggle('unseen', !!ownStory);
+        }
+    }
 
-    const totalDiv = document.createElement("div");
-    totalDiv.classList.add("total-cost");
-
-    totalDiv.innerHTML = `
-        Total Build Cost: $${totalCost.toFixed(2)}
-    `;
-
-    container.appendChild(totalDiv);
+    if (window.lucide) lucide.createIcons();
 }
 
-let currentCarId = null;
-
-function openModModal(carId) {
-    currentCarId = carId;
-    document.getElementById("modModal").style.display = "flex";
+function escHtml(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
-function closeModModal() {
-    document.getElementById("modModal").style.display = "none";
+let _storyList = []; // the list currently being shown in the viewer
+
+function openStoryViewer(index) {
+    _storyList  = _stories.filter(s => !s.is_own);
+    if (!_storyList.length) return;
+    _storyIndex = Math.max(0, Math.min(index, _storyList.length - 1));
+    showStoryAt(_storyIndex);
 }
 
-async function submitMod() {
-    const name = document.getElementById("modName").value;
-    const cost = document.getElementById("modCost").value;
-    const category = document.getElementById("modCategory").value;
+function showStoryAt(idx) {
+    if (idx < 0 || idx >= _storyList.length) { closeStoryViewer(); return; }
+    const s = _storyList[idx];
 
-    await fetch("/add_mod", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-            car_id: currentCarId,
-            name,
-            cost,
-            category
-        })
-    });
+    // Header
+    const letter = (s.username || '?')[0].toUpperCase();
+    document.getElementById('storyViewerAvatar').textContent = letter;
+    document.getElementById('storyViewerUsername').textContent = '@' + s.username;
+    document.getElementById('storyViewerTime').textContent = s.time || '';
 
-    closeModModal();
-    loadGarage();
+    // Body
+    const body = document.getElementById('storyViewerBody');
+    body.innerHTML = '';
+    if (s.image) {
+        const img = document.createElement('img');
+        img.src = s.image;
+        body.appendChild(img);
+    }
+    if (s.content) {
+        const p = document.createElement('div');
+        p.className = 'story-viewer-text';
+        p.textContent = s.content;
+        body.appendChild(p);
+    }
+
+    // Progress bars
+    const prog = document.getElementById('storyProgress');
+    prog.innerHTML = _storyList.map((_, i) =>
+        `<div class="story-progress-bar"><div class="story-progress-fill${i < idx ? ' done' : ''}" id="spf-${i}"></div></div>`
+    ).join('');
+
+    // Mark viewed
+    fetch(`/api/stories/view/${s.id}`, { method: 'POST' }).catch(() => {});
+
+    // Animate current bar
+    clearTimeout(_storyTimer);
+    const fill = document.getElementById(`spf-${idx}`);
+    if (fill) {
+        fill.style.transition = `width ${STORY_DURATION}ms linear`;
+        requestAnimationFrame(() => { fill.style.width = '100%'; });
+    }
+    _storyTimer = setTimeout(() => {
+        _storyIndex++;
+        showStoryAt(_storyIndex);
+    }, STORY_DURATION);
+
+    document.getElementById('storyViewer').style.display = 'flex';
+    if (window.lucide) lucide.createIcons();
 }
 
-loadMods(car.id);
-loadPosts();
+function advanceStory(e) {
+    if (e.target.closest('.story-viewer-close') || e.target.closest('.story-viewer-header')) return;
+    const viewer = document.getElementById('storyViewer');
+    const rect   = viewer.getBoundingClientRect();
+    if (e.clientX < rect.width / 2) {
+        _storyIndex = Math.max(0, _storyIndex - 1);
+    } else {
+        _storyIndex++;
+    }
+    clearTimeout(_storyTimer);
+    showStoryAt(_storyIndex);
+}
+
+function closeStoryViewer(e) {
+    if (e) e.stopPropagation();
+    clearTimeout(_storyTimer);
+    document.getElementById('storyViewer').style.display = 'none';
+    loadStories(); // refresh viewed state
+}
+
+// "Your Story" bubble — open creator or view own story
+function openMyStoryOptions() {
+    const ownStory = _stories.find(s => s.is_own);
+    if (ownStory) {
+        // Open the full viewer starting at the own story (it's index 0 in _stories since sorted first)
+        _storyIndex = 0;
+        // Temporarily treat own story as viewable
+        const all = _stories; // includes own story at index 0
+        showStoryViewerAll(all, 0);
+    } else {
+        openStoryCreator();
+    }
+}
+
+function showStoryViewerAll(list, idx) {
+    if (!list.length || idx >= list.length) { closeStoryViewer(); return; }
+    const s = list[idx];
+    const letter = (s.username || '?')[0].toUpperCase();
+    document.getElementById('storyViewerAvatar').textContent = letter;
+    document.getElementById('storyViewerUsername').textContent = '@' + s.username;
+    document.getElementById('storyViewerTime').textContent = s.time || '';
+    const body = document.getElementById('storyViewerBody');
+    body.innerHTML = '';
+    if (s.image) { const img = document.createElement('img'); img.src = s.image; body.appendChild(img); }
+    if (s.content) { const p = document.createElement('div'); p.className = 'story-viewer-text'; p.textContent = s.content; body.appendChild(p); }
+    const prog = document.getElementById('storyProgress');
+    prog.innerHTML = list.map((_, i) =>
+        `<div class="story-progress-bar"><div class="story-progress-fill${i < idx ? ' done' : ''}" id="spf-${i}"></div></div>`
+    ).join('');
+    clearTimeout(_storyTimer);
+    const fill = document.getElementById(`spf-${idx}`);
+    if (fill) { fill.style.transition = `width ${STORY_DURATION}ms linear`; requestAnimationFrame(() => { fill.style.width = '100%'; }); }
+    _storyTimer = setTimeout(() => showStoryViewerAll(list, idx + 1), STORY_DURATION);
+    document.getElementById('storyViewer').style.display = 'flex';
+    if (window.lucide) lucide.createIcons();
+}
+function openStoryCreator() {
+    document.getElementById('storyCreatorModal').style.display = 'flex';
+    if (window.lucide) lucide.createIcons();
+}
+function closeStoryCreator() {
+    document.getElementById('storyCreatorModal').style.display = 'none';
+}
+function previewStoryImage(input) {
+    if (!input.files[0]) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+        document.getElementById('storyImagePreview').src = e.target.result;
+        document.getElementById('storyImagePreviewWrap').style.display = 'block';
+    };
+    reader.readAsDataURL(input.files[0]);
+}
+function clearStoryImage() {
+    document.getElementById('storyImageInput').value = '';
+    document.getElementById('storyImagePreviewWrap').style.display = 'none';
+}
+async function submitStory() {
+    const content = document.getElementById('storyContentInput').value.trim();
+    const imgFile = document.getElementById('storyImageInput').files[0];
+    if (!content && !imgFile) { alert('Add some text or a photo first.'); return; }
+    const fd = new FormData();
+    fd.append('content', content);
+    if (imgFile) fd.append('image', imgFile);
+    const res  = await fetch('/api/stories/add', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (data.error) { alert(data.error); return; }
+    closeStoryCreator();
+    document.getElementById('storyContentInput').value = '';
+    clearStoryImage();
+    loadStories();
+}
+
+// ─── Init ─────────────────────────────────────────────────────────
+if (document.getElementById("feed")) {
+    const params = new URLSearchParams(window.location.search);
+    const q = params.get("q");
+    loadPosts(q || "");
+}
+
+if (document.getElementById("storiesStrip")) {
+    loadStories();
+}
+
+if (document.getElementById("challengeWidget")) {
+    loadWeeklyChallenge();
+}
+
+// Poll notifications every 60s if logged in
+if (document.getElementById("notifBadge")) {
+    loadNotifications();
+    setInterval(loadNotifications, 60000);
+}
