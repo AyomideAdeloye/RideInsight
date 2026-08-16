@@ -163,8 +163,8 @@ function initScene() {
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.outputEncoding = THREE.sRGBEncoding;
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 0.95;
+    renderer.toneMapping = THREE.LinearToneMapping;
+    renderer.toneMappingExposure = 1.2;
     resizeRenderer();
 
     // Scene — clean studio look
@@ -293,22 +293,32 @@ function loadModel() {
         (gltf) => {
             carModel = gltf.scene;
 
-            // Build name → node map
+            // Build name → node map + log all mesh names so we can debug
+            const foundMeshNames = [];
             carModel.traverse(node => {
                 meshMap[node.name] = node;
                 if (node.isMesh) {
                     node.castShadow    = true;
                     node.receiveShadow = true;
-                    // Grab body material for paint
-                    if (node.name === "Body" && !bodyMaterial) {
-                        const mat = Array.isArray(node.material) ? node.material[0] : node.material;
-                        if (mat) bodyMaterial = mat;
-                    }
+                    foundMeshNames.push(node.name);
                 }
             });
+            console.log("=== GLB Mesh Names ===", foundMeshNames);
 
-            // Set initial part visibility
-            applyVisibility();
+            // Check how many of our expected names were found
+            const expectedNames = [...ALL_PART_MESHES, ...ALWAYS_VISIBLE];
+            const matched = expectedNames.filter(n => meshMap[n]?.isMesh);
+            console.log(`Matched ${matched.length}/${expectedNames.length} expected meshes:`, matched);
+            const missing = expectedNames.filter(n => !meshMap[n]?.isMesh);
+            if (missing.length) console.warn("MISSING meshes:", missing);
+
+            // If NO named meshes matched, show everything (fallback)
+            if (matched.length === 0) {
+                console.warn("No named meshes found — showing all meshes as fallback");
+                carModel.traverse(node => { if (node.isMesh) node.visible = true; });
+            } else {
+                applyVisibility();
+            }
 
             // Rotate to face camera (Blender exports front facing -Z, Three.js camera looks at +Z)
             carModel.rotation.y = Math.PI;
@@ -398,51 +408,35 @@ function applyPaint(hex) {
     currentPaintHex = hex;
     if (!carModel) return;
     const color = new THREE.Color(hex);
-    // Paint ALL meshes (including hidden variants) so swaps look correct
     carModel.traverse(node => {
         if (!node.isMesh) return;
         if (NO_PAINT_MESHES.has(node.name)) return;
         const mats = Array.isArray(node.material) ? node.material : [node.material];
         mats.forEach(mat => {
-            if (!mat) return;
-            // Skip glass/transparent materials
-            if (mat.transparent && mat.opacity < 0.4) return;
-            // Clone material once to avoid sharing across instances
-            if (!mat._paintCloned) {
-                const m = mat.clone();
-                m._paintCloned = true;
-                if (Array.isArray(node.material)) {
-                    const idx = node.material.indexOf(mat);
-                    node.material[idx] = m;
-                } else {
-                    node.material = m;
-                }
-                mat = m;
-            }
+            if (!mat || !mat.color) return;
+            if (mat.transparent && mat.opacity < 0.3) return;
             mat.color.set(color);
-            // Give it glossy car-paint properties
-            mat.roughness = 0.12;
-            mat.metalness = 0.55;
             mat.needsUpdate = true;
         });
     });
 }
 
-// Call once on load to set up glossy materials even before color pick
 function prepMaterials() {
     if (!carModel) return;
     carModel.traverse(node => {
         if (!node.isMesh) return;
-        // Wheels get dark rubber look
-        if (NO_PAINT_MESHES.has(node.name)) {
-            const mats = Array.isArray(node.material) ? node.material : [node.material];
-            mats.forEach(mat => {
-                if (!mat) return;
-                mat.roughness = 0.85;
+        const mats = Array.isArray(node.material) ? node.material : [node.material];
+        mats.forEach(mat => {
+            if (!mat) return;
+            if (NO_PAINT_MESHES.has(node.name)) {
+                mat.roughness = 0.8;
                 mat.metalness = 0.1;
-                mat.needsUpdate = true;
-            });
-        }
+            } else {
+                mat.roughness = 0.25;
+                mat.metalness = 0.35;
+            }
+            mat.needsUpdate = true;
+        });
     });
 }
 
