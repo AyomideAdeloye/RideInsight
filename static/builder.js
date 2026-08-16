@@ -79,7 +79,6 @@ const PART_CATEGORIES = [
 const ALWAYS_VISIBLE = [
     "Body", "Interior",
     "SM_Wheel_FL", "SM_Wheel_FR", "SM_Wheel_BL", "SM_Wheel_BR",
-    "SKM_Car002_Founder_Stang_1967_1967"
 ];
 
 // All swappable mesh names (flat)
@@ -116,6 +115,12 @@ let autoRotate = true;
 function matchesVariant(meshName, variantName) {
     const re = new RegExp("(^|_)" + variantName + "(_\\d+)?$");
     return re.test(meshName);
+}
+
+// Meshes that must NEVER render (skinned duplicate of the whole car —
+// without its armature it explodes into stretched "filament" geometry)
+function isJunkMesh(name) {
+    return /SKM_/i.test(name);
 }
 
 // Is this mesh part of the always-visible base (body shell, interior, wheels)?
@@ -319,11 +324,20 @@ function loadModel() {
             baseNodes = [];
             const unmatched = [];
 
+            const junkNodes = [];
             carModel.traverse(node => {
                 if (!node.isMesh) return;
+                meshMap[node.name] = node;
+
+                // Skinned duplicate car → permanently hidden
+                if (isJunkMesh(node.name)) {
+                    junkNodes.push(node);
+                    node.visible = false;
+                    return;
+                }
+
                 node.castShadow    = true;
                 node.receiveShadow = true;
-                meshMap[node.name] = node;
 
                 // Try to assign to a part variant
                 const variant = ALL_PART_MESHES.find(v => matchesVariant(node.name, v));
@@ -336,6 +350,7 @@ function loadModel() {
                     baseNodes.push(node);   // unknown → keep visible
                 }
             });
+            if (junkNodes.length) console.log("Hidden skinned/junk meshes:", junkNodes.map(n => n.name));
 
             const variantCount = Object.values(partNodes).reduce((s, arr) => s + arr.length, 0);
             console.log(`Mapped ${variantCount} variant meshes, ${baseNodes.length} base meshes`);
@@ -347,14 +362,15 @@ function loadModel() {
             carModel.rotation.y = Math.PI;
 
             // Scale first using the car's footprint (length × width, not height)
-            const box0  = new THREE.Box3().setFromObject(carModel);
+            const box0  = visibleBox(carModel);
             const size0 = box0.getSize(new THREE.Vector3());
             const footprint = Math.max(size0.x, size0.z);
             const scale = footprint > 0 ? 7 / footprint : 1;
             carModel.scale.setScalar(scale);
+            carModel.updateMatrixWorld(true);
 
-            // Now center and sit on ground
-            const box    = new THREE.Box3().setFromObject(carModel);
+            // Now center and sit on ground (visible meshes only)
+            const box    = visibleBox(carModel);
             const center = box.getCenter(new THREE.Vector3());
             carModel.position.x = -center.x;
             carModel.position.z = -center.z;
@@ -387,6 +403,20 @@ function loadModel() {
             if (status) status.textContent = "Failed to load model";
         }
     );
+}
+
+// Bounding box over VISIBLE meshes only (ignores hidden junk/variant meshes)
+function visibleBox(root) {
+    const box = new THREE.Box3();
+    root.updateMatrixWorld(true);
+    root.traverse(node => {
+        if (!node.isMesh || !node.visible) return;
+        if (!node.geometry) return;
+        if (!node.geometry.boundingBox) node.geometry.computeBoundingBox();
+        const b = node.geometry.boundingBox.clone().applyMatrix4(node.matrixWorld);
+        box.union(b);
+    });
+    return box;
 }
 
 function setVariantVisible(variantName, visible) {
