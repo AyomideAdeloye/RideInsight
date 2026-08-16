@@ -13,13 +13,6 @@
                     <div id="modelLoadStatus">Loading model…</div>
                 </div>
 
-                <!-- Top-left: build name + actions -->
-                <div class="viewer-top-bar">
-                    <input id="buildName" class="build-name-input" placeholder="Name your build…">
-                    <button class="btn-viewer btn-save" onclick="saveBuild()">Save</button>
-                    <button class="btn-viewer btn-clear" onclick="clearBuild()">Clear</button>
-                </div>
-
                 <!-- Bottom: paint swatches + rotate controls -->
                 <div class="viewer-bottom-bar">
                     <div class="viewer-paint-row">
@@ -40,6 +33,13 @@
 
         <!-- RIGHT: Scrollable config panel -->
         <div class="builder-parts-panel">
+
+            <!-- Build name + actions -->
+            <div class="build-name-row">
+                <input id="buildName" class="build-name-input" placeholder="Name your build…">
+                <button class="btn btn-primary btn-sm" onclick="saveBuild()">Save</button>
+                <button class="btn btn-ghost btn-sm" onclick="clearBuild()">Clear</button>
+            </div>
 
             <div class="parts-panel-header">
                 <h2>Build Custom Vehicle</h2>
