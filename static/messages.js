@@ -4,7 +4,37 @@ let pollTimer      = null;
 
 function esc(s) {
     if (!s) return "";
-    return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+    return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/'/g,"&#39;").replace(/"/g,"&quot;");
+}
+
+// "2026-08-16 14:32" → "14:32" if today, else "Aug 16"
+const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+function fmtTime(ts) {
+    if (!ts || ts.length < 16) return "";
+    const today = new Date().toISOString().slice(0, 10);
+    if (ts.slice(0, 10) === today) return ts.slice(11, 16);
+    const mo = parseInt(ts.slice(5, 7), 10) - 1;
+    return `${MONTHS[mo] || ""} ${parseInt(ts.slice(8, 10), 10)}`;
+}
+
+// Update the nav chat badge from conversation unread counts
+function updateNavBadge(convs) {
+    const total = convs.reduce((s, c) => s + (c.unread || 0), 0);
+    // nav badge sits next to the chat icon link
+    const chatLink = document.querySelector('a[href="/messages"], [onclick*="/messages"]');
+    if (!chatLink) return;
+    let badge = chatLink.querySelector(".notif-badge");
+    if (total > 0) {
+        if (!badge) {
+            badge = document.createElement("span");
+            badge.className = "notif-badge";
+            chatLink.appendChild(badge);
+        }
+        badge.style.display = "flex";
+        badge.textContent = total < 10 ? total : "9+";
+    } else if (badge) {
+        badge.style.display = "none";
+    }
 }
 
 function csrfFetch(url, opts = {}) {
@@ -34,14 +64,16 @@ async function loadConversations() {
                 <div class="conv-name">@${esc(c.username)}${c.unread > 0 ? `<span class="conv-unread-badge">${c.unread}</span>` : ''}</div>
                 <div class="conv-preview">${esc(c.last_msg)}</div>
             </div>
-            <div class="conv-time">${esc(c.created_at ? c.created_at.slice(11,16) : '')}</div>
+            <div class="conv-time">${fmtTime(c.created_at)}</div>
         </div>
     `).join("");
+    updateNavBadge(convs);
 }
 
 // ─── Thread ───────────────────────────────────────────────────────
 async function openThread(userId, username, avatar) {
-    activeUserId = userId;
+    activeUserId  = userId;
+    _lastMsgCount = -1;   // force re-render for the new thread
 
     // Update thread UI
     const thread = document.getElementById("messagesThread");
@@ -70,6 +102,8 @@ async function openThread(userId, username, avatar) {
     pollTimer = setInterval(loadMessages, 4000);
 }
 
+let _lastMsgCount = -1;
+
 async function loadMessages() {
     if (!activeUserId) return;
     const res  = await fetch(`/api/messages/${activeUserId}`);
@@ -79,17 +113,24 @@ async function loadMessages() {
 
     const myId = await getMyId();
 
+    // Was the user already near the bottom before re-render?
+    const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
+    const hasNew     = msgs.length !== _lastMsgCount;
+    _lastMsgCount    = msgs.length;
+
+    if (!hasNew) return;   // nothing changed — don't re-render or move scroll
+
     box.innerHTML = msgs.length === 0
         ? `<p class="empty-state" style="padding:24px 0;">No messages yet. Say hello!</p>`
         : msgs.map(m => `
             <div class="msg-bubble ${m.sender_id === myId ? 'mine' : 'theirs'}">
                 <div class="msg-body">${esc(m.body)}</div>
-                <div class="msg-time">${esc(m.created_at ? m.created_at.slice(11,16) : '')}</div>
+                <div class="msg-time">${fmtTime(m.created_at)}</div>
             </div>
         `).join("");
 
-    // Scroll to bottom
-    box.scrollTop = box.scrollHeight;
+    // Scroll to bottom only when appropriate
+    if (nearBottom || box.scrollTop === 0) box.scrollTop = box.scrollHeight;
     loadConversations();
 }
 
@@ -157,5 +198,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     // If page loaded with a specific thread user (from /messages/username URL)
     if (typeof THREAD_USER !== "undefined" && THREAD_USER) {
         await openThread(THREAD_USER.id, THREAD_USER.username, THREAD_USER.avatar || "");
+    } else {
+        // No open thread — still poll the conversation list for new messages
+        if (pollTimer) clearInterval(pollTimer);
+        pollTimer = setInterval(loadConversations, 8000);
     }
 });

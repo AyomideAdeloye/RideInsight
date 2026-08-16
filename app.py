@@ -3021,7 +3021,7 @@ def get_conversations():
         return jsonify([])
     uid = session["user_id"]
     conn = get_db_connection()
-    # Get latest message per conversation partner
+    # Get the true latest message per conversation partner
     rows = conn.execute("""
         SELECT
             u.id, u.username, u.avatar,
@@ -3029,10 +3029,13 @@ def get_conversations():
             (SELECT COUNT(*) FROM messages WHERE receiver_id = ? AND sender_id = u.id AND is_read = 0) as unread
         FROM messages m
         JOIN users u ON u.id = CASE WHEN m.sender_id = ? THEN m.receiver_id ELSE m.sender_id END
-        WHERE m.sender_id = ? OR m.receiver_id = ?
-        GROUP BY u.id
-        ORDER BY m.created_at DESC
-    """, (uid, uid, uid, uid)).fetchall()
+        WHERE m.id IN (
+            SELECT MAX(id) FROM messages
+            WHERE sender_id = ? OR receiver_id = ?
+            GROUP BY CASE WHEN sender_id = ? THEN receiver_id ELSE sender_id END
+        )
+        ORDER BY m.id DESC
+    """, (uid, uid, uid, uid, uid)).fetchall()
     conn.close()
     return jsonify([dict(r) for r in rows])
 
