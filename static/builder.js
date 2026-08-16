@@ -172,7 +172,7 @@ document.addEventListener("DOMContentLoaded", () => {
     buildPartSelectorUI();
     buildPerfModsUI();
     initVehicleDropdowns();
-    initColorSwatches();
+    initColorWheel();
     loadSavedBuilds();
     if (window.refreshIcons) window.refreshIcons();
 });
@@ -238,10 +238,10 @@ function initScene() {
     rim.position.set(0, 6, -10);
     scene.add(rim);
 
-    // Ground — studio floor (slightly darker than bg for contrast)
+    // Ground — gray studio floor
     const ground = new THREE.Mesh(
         new THREE.PlaneGeometry(80, 80),
-        new THREE.MeshStandardMaterial({ color: 0x94989f, roughness: 0.95, metalness: 0 })
+        new THREE.MeshStandardMaterial({ color: 0x9a9ea6, roughness: 0.95, metalness: 0 })
     );
     ground.rotation.x = -Math.PI / 2;
     ground.receiveShadow = true;
@@ -453,7 +453,9 @@ const NO_PAINT_MESHES = new Set([
 function applyPaint(hex) {
     currentPaintHex = hex;
     if (!carModel) return;
-    const color = new THREE.Color(hex);
+    // convertSRGBToLinear: renderer outputs sRGB, so hex colors must be
+    // converted to linear or they render oversaturated ("neon")
+    const color = new THREE.Color(hex).convertSRGBToLinear();
     carModel.traverse(node => {
         if (!node.isMesh) return;
         if (isWheelOrInterior(node.name)) return;
@@ -461,10 +463,12 @@ function applyPaint(hex) {
         mats.forEach(mat => {
             if (!mat || !mat.color) return;
             if (mat.transparent && mat.opacity < 0.3) return;
-            mat.color.set(color);
+            mat.color.copy(color);
             mat.needsUpdate = true;
         });
     });
+    const preview = document.getElementById("paintPreview");
+    if (preview) preview.style.background = hex;
 }
 
 function prepMaterials() {
@@ -505,25 +509,86 @@ function toggleAutoRotate() {
     if (btn) btn.textContent = controls.autoRotate ? "⏸ Auto" : "▶ Auto";
 }
 
-// ── Color swatches ─────────────────────────────────────────────────────────
-function initColorSwatches() {
-    const wrap = document.getElementById("colorSwatches");
-    if (!wrap) return;
-    PAINT_COLORS.forEach(c => {
-        const btn = document.createElement("button");
-        btn.className = "color-swatch";
-        btn.style.background = c.hex;
-        btn.title = c.label;
-        btn.onclick = () => {
-            applyPaint(c.hex);
-            document.getElementById("customColor").value = c.hex;
-            wrap.querySelectorAll(".color-swatch").forEach(b => b.classList.remove("active"));
-            btn.classList.add("active");
-        };
-        wrap.appendChild(btn);
-    });
-    // Activate first
-    wrap.firstChild?.classList.add("active");
+// ── Color wheel picker ─────────────────────────────────────────────────────
+let pickedHue = 0, pickedSat = 0, pickedLight = 45;   // default: neutral dark gray
+
+function hslToHex(h, s, l) {
+    s /= 100; l /= 100;
+    const a = s * Math.min(l, 1 - l);
+    const f = n => {
+        const k = (n + h / 30) % 12;
+        const c = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+        return Math.round(255 * c).toString(16).padStart(2, "0");
+    };
+    return `#${f(0)}${f(8)}${f(4)}`;
+}
+
+function paintFromWheel() {
+    const hex = hslToHex(pickedHue, pickedSat, pickedLight);
+    applyPaint(hex);
+}
+
+function onLightnessChange(v) {
+    pickedLight = parseInt(v, 10);
+    paintFromWheel();
+}
+
+function initColorWheel() {
+    const wheel = document.getElementById("colorWheel");
+    if (!wheel) return;
+    const ctx  = wheel.getContext("2d");
+    const size = wheel.width;
+    const cx = size / 2, cy = size / 2, radius = size / 2 - 2;
+
+    // Draw hue wheel with saturation from center (white → full hue)
+    const img = ctx.createImageData(size, size);
+    for (let y = 0; y < size; y++) {
+        for (let x = 0; x < size; x++) {
+            const dx = x - cx, dy = y - cy;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            const i = (y * size + x) * 4;
+            if (dist > radius) { img.data[i + 3] = 0; continue; }
+            const hue = (Math.atan2(dy, dx) * 180 / Math.PI + 360) % 360;
+            const sat = Math.min(1, dist / radius);
+            // HSL → RGB at L=50 for the wheel display
+            const c = (1 - Math.abs(2 * 0.5 - 1)) * sat;
+            const hp = hue / 60;
+            const xv = c * (1 - Math.abs(hp % 2 - 1));
+            let r = 0, g = 0, b = 0;
+            if      (hp < 1) { r = c; g = xv; }
+            else if (hp < 2) { r = xv; g = c; }
+            else if (hp < 3) { g = c; b = xv; }
+            else if (hp < 4) { g = xv; b = c; }
+            else if (hp < 5) { r = xv; b = c; }
+            else             { r = c; b = xv; }
+            const m = 0.5 - c / 2;
+            img.data[i]     = Math.round((r + m) * 255);
+            img.data[i + 1] = Math.round((g + m) * 255);
+            img.data[i + 2] = Math.round((b + m) * 255);
+            img.data[i + 3] = 255;
+        }
+    }
+    ctx.putImageData(img, 0, 0);
+
+    // Pick color on click/drag
+    let dragging = false;
+    const pick = (e) => {
+        const rect = wheel.getBoundingClientRect();
+        const px = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+        const py = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
+        const sx = px * (size / rect.width), sy = py * (size / rect.height);
+        const dx = sx - cx, dy = sy - cy;
+        const dist = Math.min(Math.sqrt(dx * dx + dy * dy), radius);
+        pickedHue = (Math.atan2(dy, dx) * 180 / Math.PI + 360) % 360;
+        pickedSat = Math.round((dist / radius) * 100);
+        paintFromWheel();
+    };
+    wheel.addEventListener("mousedown",  e => { dragging = true; pick(e); });
+    window.addEventListener("mousemove", e => { if (dragging) pick(e); });
+    window.addEventListener("mouseup",   () => { dragging = false; });
+    wheel.addEventListener("touchstart", e => { dragging = true; pick(e); e.preventDefault(); }, { passive: false });
+    wheel.addEventListener("touchmove",  e => { if (dragging) { pick(e); e.preventDefault(); } }, { passive: false });
+    window.addEventListener("touchend",  () => { dragging = false; });
 }
 
 // ── Part selector UI ───────────────────────────────────────────────────────
@@ -903,12 +968,11 @@ function clearBuild() {
     Object.values(perfModsSelected).forEach(s => s.clear());
     document.querySelectorAll(".mod-row").forEach(r => r.classList.remove("mod-active"));
     document.querySelectorAll(".mod-add-btn").forEach(b => b.textContent = "Add");
-    // Reset paint
-    applyPaint(PAINT_COLORS[0].hex);
-    const swatches = document.getElementById("colorSwatches");
-    if (swatches) {
-        swatches.querySelectorAll(".color-swatch").forEach((b, i) => b.classList.toggle("active", i === 0));
-    }
+    // Reset paint to neutral dark gray
+    pickedHue = 0; pickedSat = 0; pickedLight = 45;
+    const slider = document.getElementById("lightSlider");
+    if (slider) slider.value = 45;
+    paintFromWheel();
     updateBuildSummary();
 }
 

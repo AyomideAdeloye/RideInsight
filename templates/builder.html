@@ -13,12 +13,19 @@
                     <div id="modelLoadStatus">Loading model…</div>
                 </div>
 
-                <!-- Bottom: paint swatches + rotate controls -->
+                <!-- Bottom: color wheel + rotate controls -->
                 <div class="viewer-bottom-bar">
                     <div class="viewer-paint-row">
                         <span class="paint-label">COLOR</span>
-                        <div class="color-swatches" id="colorSwatches"></div>
-                        <input type="color" id="customColor" title="Custom color" onchange="setCarColor(this.value)">
+                        <canvas id="colorWheel" width="96" height="96"></canvas>
+                        <div class="paint-lightness-col">
+                            <input type="range" id="lightSlider" min="8" max="92" value="45"
+                                   oninput="onLightnessChange(this.value)" title="Darker ↔ Lighter">
+                            <div class="paint-preview-row">
+                                <span id="paintPreview" class="paint-preview"></span>
+                                <span class="paint-hint">drag wheel · slide for shade</span>
+                            </div>
+                        </div>
                     </div>
                     <div class="viewer-rotate-row">
                         <button class="viewer-ctrl-btn" onclick="rotateLeft()"><i data-lucide="chevron-left"></i></button>
