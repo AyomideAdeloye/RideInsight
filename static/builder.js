@@ -450,6 +450,9 @@ const NO_PAINT_MESHES = new Set([
     "SM_Wheel_FL", "SM_Wheel_FR", "SM_Wheel_BL", "SM_Wheel_BR",
 ]);
 
+// Material names that must keep their original look (not body paint)
+const NO_PAINT_MATERIAL = /glass|light|lamp|head|tail|chrome|mirror|wiper|trim|rubber|tire|tyre|interior|grill|window|windshield|lens|emissive|metal_dark|logo|badge|plate/i;
+
 function applyPaint(hex) {
     currentPaintHex = hex;
     if (!carModel) return;
@@ -463,6 +466,7 @@ function applyPaint(hex) {
         mats.forEach(mat => {
             if (!mat || !mat.color) return;
             if (mat.transparent && mat.opacity < 0.3) return;
+            if (mat.name && NO_PAINT_MATERIAL.test(mat.name)) return;   // keep lights/glass/trim
             mat.color.copy(color);
             mat.needsUpdate = true;
         });
@@ -473,11 +477,15 @@ function applyPaint(hex) {
 
 function prepMaterials() {
     if (!carModel) return;
+    const matNames = new Set();
     carModel.traverse(node => {
         if (!node.isMesh) return;
         const mats = Array.isArray(node.material) ? node.material : [node.material];
         mats.forEach(mat => {
             if (!mat) return;
+            if (mat.name) matNames.add(mat.name);
+            // Leave lights/glass/chrome/trim untouched
+            if (mat.name && NO_PAINT_MATERIAL.test(mat.name)) return;
             if (isWheelOrInterior(node.name)) {
                 mat.roughness = 0.8;
                 mat.metalness = 0.1;
@@ -490,6 +498,7 @@ function prepMaterials() {
             mat.needsUpdate = true;
         });
     });
+    console.log("Material names in model:", [...matNames]);
 }
 
 function setCarColor(hex) { applyPaint(hex); }
