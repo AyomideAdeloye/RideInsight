@@ -1194,7 +1194,7 @@ input, textarea, select { font-family: var(--font); }
     bottom: 0;
     left: 0;
     right: 0;
-    background: linear-gradient(to top, rgba(240,242,245,0.96) 0%, rgba(240,242,245,0) 100%);
+    background: linear-gradient(to top, rgba(168,173,181,0.96) 0%, rgba(168,173,181,0) 100%);
     padding: 60px 32px 24px;
     display: flex;
     flex-direction: column;

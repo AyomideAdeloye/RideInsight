@@ -194,8 +194,8 @@ function initScene() {
 
     // Scene — clean studio look
     scene = new THREE.Scene();
-    scene.background = new THREE.Color(0xf0f2f5);
-    scene.fog = new THREE.Fog(0xf0f2f5, 30, 70);
+    scene.background = new THREE.Color(0xa8adb5);
+    scene.fog = new THREE.Fog(0xa8adb5, 30, 70);
 
     // Camera
     camera = new THREE.PerspectiveCamera(34, canvas.clientWidth / canvas.clientHeight, 0.1, 200);
@@ -212,12 +212,12 @@ function initScene() {
     controls.autoRotateSpeed = 0.7;
     controls.target.set(0, 0.5, 0);
 
-    // Studio lights
-    const ambient = new THREE.AmbientLight(0xffffff, 0.55);
+    // Studio lights — soft, low-key
+    const ambient = new THREE.AmbientLight(0xffffff, 0.35);
     scene.add(ambient);
 
     // Key light — upper right front
-    const key = new THREE.DirectionalLight(0xffffff, 1.6);
+    const key = new THREE.DirectionalLight(0xffffff, 1.0);
     key.position.set(8, 14, 8);
     key.castShadow = true;
     key.shadow.mapSize.set(2048, 2048);
@@ -229,24 +229,19 @@ function initScene() {
     scene.add(key);
 
     // Fill light — upper left
-    const fill = new THREE.DirectionalLight(0xddeeff, 0.7);
+    const fill = new THREE.DirectionalLight(0xdde6f0, 0.35);
     fill.position.set(-8, 8, 4);
     scene.add(fill);
 
     // Rim light — behind car
-    const rim = new THREE.DirectionalLight(0xffffff, 0.5);
+    const rim = new THREE.DirectionalLight(0xffffff, 0.25);
     rim.position.set(0, 6, -10);
     scene.add(rim);
-
-    // Bounce light — from below (studio floor reflection)
-    const bounce = new THREE.DirectionalLight(0xffffff, 0.25);
-    bounce.position.set(0, -4, 6);
-    scene.add(bounce);
 
     // Ground — studio floor (slightly darker than bg for contrast)
     const ground = new THREE.Mesh(
         new THREE.PlaneGeometry(80, 80),
-        new THREE.MeshStandardMaterial({ color: 0xd9dce0, roughness: 0.95, metalness: 0 })
+        new THREE.MeshStandardMaterial({ color: 0x94989f, roughness: 0.95, metalness: 0 })
     );
     ground.rotation.x = -Math.PI / 2;
     ground.receiveShadow = true;
@@ -278,22 +273,22 @@ function buildEnvMap() {
     ec.width = size; ec.height = size / 2;
     const ctx = ec.getContext("2d");
 
-    // Sky gradient (top)
+    // Sky gradient (top) — muted gray so reflections don't wash out paint
     const sky = ctx.createLinearGradient(0, 0, 0, ec.height * 0.55);
-    sky.addColorStop(0, "#ffffff");
-    sky.addColorStop(1, "#e8eaed");
+    sky.addColorStop(0, "#b0b4ba");
+    sky.addColorStop(1, "#8e9298");
     ctx.fillStyle = sky;
     ctx.fillRect(0, 0, size, ec.height * 0.55);
 
     // Ground gradient (bottom)
     const gnd = ctx.createLinearGradient(0, ec.height * 0.55, 0, ec.height);
-    gnd.addColorStop(0, "#d8dadd");
-    gnd.addColorStop(1, "#c8cacd");
+    gnd.addColorStop(0, "#75797f");
+    gnd.addColorStop(1, "#63676d");
     ctx.fillStyle = gnd;
     ctx.fillRect(0, ec.height * 0.55, size, ec.height);
 
-    // Two bright studio light boxes
-    ctx.fillStyle = "rgba(255,255,255,0.9)";
+    // Two soft studio light boxes (highlights on the paint)
+    ctx.fillStyle = "rgba(255,255,255,0.55)";
     ctx.fillRect(60, 10, 100, 60);   // left box
     ctx.fillRect(340, 10, 80, 50);   // right box
 
@@ -483,8 +478,10 @@ function prepMaterials() {
                 mat.roughness = 0.8;
                 mat.metalness = 0.1;
             } else {
-                mat.roughness = 0.25;
-                mat.metalness = 0.35;
+                // Lower metalness = truer, richer paint color
+                mat.roughness = 0.35;
+                mat.metalness = 0.15;
+                if (mat.envMapIntensity !== undefined) mat.envMapIntensity = 0.6;
             }
             mat.needsUpdate = true;
         });
