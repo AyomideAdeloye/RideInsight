@@ -1136,8 +1136,8 @@ input, textarea, select { font-family: var(--font); }
 /* ─── Builder: Tesla-style layout ───────────────────────────────── */
 .builder-layout {
     display: grid;
-    grid-template-columns: 1fr 380px;
-    height: calc(100vh - 64px - 28px);  /* viewport minus nav minus top content padding */
+    grid-template-columns: 1fr 440px;
+    height: calc(100vh - 64px - 28px);
     overflow: hidden;
 }
 
