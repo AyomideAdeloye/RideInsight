@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block content %}
+<script>window.SINGLE_POST_ID = {{ post_id }};</script>
+<div class="post-detail-page">
+    <a href="javascript:history.length > 1 ? history.back() : window.location.assign('/')" class="post-back-link">
+        <i data-lucide="arrow-left"></i> Back
+    </a>
+    <div class="feed" id="feed">
+        <div class="empty-state">Loading post…</div>
+    </div>
+</div>
+{% endblock %}

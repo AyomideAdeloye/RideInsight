@@ -243,6 +243,26 @@ input, textarea, select { font-family: var(--font); }
     box-shadow: 0 0 0 3px var(--accent-light), var(--shadow-md);
 }
 
+/* Single post page */
+.post-detail-page {
+    max-width: 680px;
+    margin: 0 auto;
+    padding: 24px 16px;
+}
+.post-back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-decoration: none;
+    margin-bottom: 16px;
+    transition: color 0.15s;
+}
+.post-back-link:hover { color: var(--text); }
+.post-back-link i { width: 16px; height: 16px; }
+
 .post-header {
     display: flex;
     align-items: center;

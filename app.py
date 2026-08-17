@@ -648,6 +648,22 @@ def init_db():
     except Exception:
         pass
 
+    # Backfill links on old notifications where the target is parseable from text
+    try:
+        rows = conn.execute(
+            "SELECT id, text FROM notifications WHERE link IS NULL OR link = ''"
+        ).fetchall()
+        for r in rows:
+            text, link = r["text"], ""
+            if " started following you" in text and text.startswith("@"):
+                link = f"/profile/{text.split(' ')[0].lstrip('@')}"
+            elif " sent you a message" in text and text.startswith("💬 "):
+                link = f"/messages/{text.replace('💬 ', '').split(' ')[0]}"
+            if link:
+                conn.execute("UPDATE notifications SET link=? WHERE id=?", (link, r["id"]))
+    except Exception:
+        pass
+
     # Seed sample posts if empty
     existing = conn.execute("SELECT COUNT(*) FROM posts").fetchone()[0]
     if existing == 0:
@@ -681,8 +697,12 @@ def home():
 # Posts
 @app.route("/post/<int:post_id>")
 def post_permalink(post_id):
-    # Permalink → home feed focused on that post (feed JS scrolls + opens comments)
-    return redirect(f"/?post={post_id}")
+    conn = get_db_connection()
+    post = conn.execute("SELECT id FROM posts WHERE id=?", (post_id,)).fetchone()
+    conn.close()
+    if not post:
+        return render_template("error.html"), 404
+    return render_template("post_detail.html", post_id=post_id)
 
 @app.route("/get_posts")
 def get_posts():

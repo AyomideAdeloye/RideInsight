@@ -722,7 +722,7 @@ async function loadPosts(query = "") {
 }
 
 function sharePost(postId) {
-    const url = `${window.location.origin}/?post=${postId}`;
+    const url = `${window.location.origin}/post/${postId}`;
     navigator.clipboard.writeText(url).then(() => alert("Link copied!")).catch(() => prompt("Copy this link:", url));
 }
 
@@ -1112,21 +1112,42 @@ async function submitStory() {
     loadStories();
 }
 
+// ─── Single post page (/post/<id>) ────────────────────────────────
+async function loadSinglePost(id) {
+    const response = await fetch("/get_posts");
+    posts = await response.json();
+    const feed = document.getElementById("feed");
+    if (!feed) return;
+    feed.innerHTML = "";
+    const post = posts.find(p => p.id === id);
+    if (!post) {
+        feed.innerHTML = `<div class="empty-state">Post not found — it may have been deleted.</div>`;
+        return;
+    }
+    feed.appendChild(createPostCard(post));
+    if (window.lucide) lucide.createIcons();
+    // Comments open by default on the post page
+    toggleComments(id);
+}
+
 // ─── Init ─────────────────────────────────────────────────────────
 if (document.getElementById("feed")) {
-    const params = new URLSearchParams(window.location.search);
-    const q = params.get("q");
-    const focusPost = params.get("post");
-    loadPosts(q || "").then(() => {
-        if (!focusPost) return;
-        const card = document.getElementById(`post-card-${focusPost}`);
-        if (!card) return;
-        card.scrollIntoView({ behavior: "smooth", block: "start" });
-        card.classList.add("post-focused");
-        setTimeout(() => card.classList.remove("post-focused"), 2500);
-        // Open its comments
-        toggleComments(parseInt(focusPost, 10));
-    });
+    if (window.SINGLE_POST_ID) {
+        loadSinglePost(window.SINGLE_POST_ID);
+    } else {
+        const params = new URLSearchParams(window.location.search);
+        const q = params.get("q");
+        const focusPost = params.get("post");
+        loadPosts(q || "").then(() => {
+            if (!focusPost) return;
+            const card = document.getElementById(`post-card-${focusPost}`);
+            if (!card) return;
+            card.scrollIntoView({ behavior: "smooth", block: "start" });
+            card.classList.add("post-focused");
+            setTimeout(() => card.classList.remove("post-focused"), 2500);
+            toggleComments(parseInt(focusPost, 10));
+        });
+    }
 }
 
 if (document.getElementById("storiesStrip")) {
