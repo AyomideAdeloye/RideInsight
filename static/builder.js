@@ -2,7 +2,7 @@
 // Modular mesh-swap builder powered by Three.js + real GLB assets
 
 // ── Part configuration ─────────────────────────────────────────────────────
-const PART_CATEGORIES = [
+const MUSCLECAR_CATEGORIES = [
     {
         key:      "Hood",
         label:    "Hood",
@@ -75,11 +75,81 @@ const PART_CATEGORIES = [
     },
 ];
 
-// Lookup: variant mesh name → {label, price, categoryLabel}
-const VARIANT_INFO = {};
-PART_CATEGORIES.forEach(c => c.variants.forEach(v => {
-    VARIANT_INFO[v.name] = { label: v.label, price: v.price, category: c.label };
-}));
+// ── Vehicle registry (RI-VAS) ──────────────────────────────────────────────
+// Add a new body: drop the GLB in /static/models/, add an entry here with its
+// part categories. Everything else (UI, paint, save/load) adapts automatically.
+const VEHICLES = {
+    musclecar: {
+        label:      "Muscle Car",
+        sub:        "'67 American V8",
+        glb:        "/static/models/musclecar.glb",
+        categories: MUSCLECAR_CATEGORIES,
+    },
+    // sportscar:  { label: "Sports Car",  sub: "Modern coupe",  glb: "/static/models/sportscar.glb",  categories: [...] },
+    // hypercar:   { label: "Hyper Car",   sub: "Exotic",        glb: "/static/models/hypercar.glb",   categories: [...] },
+};
+
+// ── Model matching: real car → best available 3D body ─────────────────────
+// exact: specific make/model (+optional year range) → a dedicated model
+// archetype: fallback by vehicle character when no exact model exists yet
+const MODEL_MATCHERS = [
+    // Exact models (add entries as the asset library grows)
+    // { make: "dodge", model: "charger", years: [2011, 2023], vehicle: "charger_ld", exact: true },
+
+    // Archetype fallbacks — muscle/pony/performance RWD cars → muscle car body
+    { make: "ford",      model: "mustang",    vehicle: "musclecar" },
+    { make: "chevrolet", model: "camaro",     vehicle: "musclecar" },
+    { make: "dodge",     model: "charger",    vehicle: "musclecar" },
+    { make: "dodge",     model: "challenger", vehicle: "musclecar" },
+    { make: "pontiac",   model: "gto",        vehicle: "musclecar" },
+    { make: "pontiac",   model: "firebird",   vehicle: "musclecar" },
+    { make: "plymouth",  model: "barracuda",  vehicle: "musclecar" },
+];
+
+// Returns { key, exact } — falls back to the default body
+function matchVehicleModel(make, model, year) {
+    const m  = (make  || "").toLowerCase();
+    const md = (model || "").toLowerCase();
+    const yr = parseInt(year, 10) || 0;
+    for (const rule of MODEL_MATCHERS) {
+        if (m.includes(rule.make) && md.includes(rule.model)) {
+            if (rule.years && (yr < rule.years[0] || yr > rule.years[1])) continue;
+            return { key: rule.vehicle, exact: !!rule.exact };
+        }
+    }
+    return { key: "musclecar", exact: false };   // default body for now
+}
+
+function updateModelMatchBanner(make, model, exact) {
+    const banner = document.getElementById("modelMatchBanner");
+    if (!banner) return;
+    if (!make || !model) { banner.style.display = "none"; return; }
+    banner.style.display = "flex";
+    if (exact) {
+        banner.className = "model-match-banner exact";
+        banner.innerHTML = `<i data-lucide="badge-check"></i> Exact 3D model: ${make} ${model}`;
+    } else {
+        banner.className = "model-match-banner approx";
+        banner.innerHTML = `<i data-lucide="info"></i> ${make} ${model} — showing closest body style (${VEHICLES[currentVehicleKey].label}). Exact model coming soon.`;
+    }
+    if (window.refreshIcons) window.refreshIcons();
+}
+
+let currentVehicleKey = "musclecar";
+let PART_CATEGORIES   = VEHICLES[currentVehicleKey].categories;
+let VARIANT_INFO      = {};
+let ALL_PART_MESHES   = [];
+
+function rebuildPartIndex() {
+    PART_CATEGORIES = VEHICLES[currentVehicleKey].categories;
+    VARIANT_INFO = {};
+    PART_CATEGORIES.forEach(c => c.variants.forEach(v => {
+        VARIANT_INFO[v.name] = { label: v.label, price: v.price, category: c.label };
+    }));
+    ALL_PART_MESHES = PART_CATEGORIES.flatMap(c => c.variants.map(v => v.name));
+    Object.keys(selected).forEach(k => delete selected[k]);
+    PART_CATEGORIES.forEach(c => { selected[c.key] = c.variants[0].name; });
+}
 
 // Meshes always visible (base car)
 const ALWAYS_VISIBLE = [
@@ -87,12 +157,9 @@ const ALWAYS_VISIBLE = [
     "SM_Wheel_FL", "SM_Wheel_FR", "SM_Wheel_BL", "SM_Wheel_BR",
 ];
 
-// All swappable mesh names (flat)
-const ALL_PART_MESHES = PART_CATEGORIES.flatMap(c => c.variants.map(v => v.name));
-
-// Current selected variant per category
+// Current selected variant per category (populated by rebuildPartIndex)
 const selected = {};
-PART_CATEGORIES.forEach(c => { selected[c.key] = c.variants[0].name; });
+rebuildPartIndex();
 
 // Paint colors
 const PAINT_COLORS = [
@@ -175,8 +242,7 @@ let basePriceCents = 0;
 // ── Init ───────────────────────────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", () => {
     initScene();
-    buildPartSelectorUI();
-    buildPerfModsUI();
+    rebuildCustomizationUI();
     initVehicleDropdowns();
     initColorWheel();
     loadSavedBuilds();
@@ -315,7 +381,7 @@ function loadModel() {
     if (overlay) overlay.style.display = "flex";
 
     loader.load(
-        "/static/models/musclecar.glb",
+        VEHICLES[currentVehicleKey].glb,
         (gltf) => {
             carModel = gltf.scene;
 
@@ -404,6 +470,67 @@ function loadModel() {
             if (status) status.textContent = "Failed to load model";
         }
     );
+}
+
+// ── Vehicle switching ──────────────────────────────────────────────────────
+function switchVehicle(key) {
+    if (!VEHICLES[key] || key === currentVehicleKey) return;
+    currentVehicleKey = key;
+
+    // Tear down current model
+    if (carModel && scene) { scene.remove(carModel); }
+    carModel  = null;
+    meshMap   = {};
+    partNodes = {};
+    baseNodes = [];
+
+    // Reset perf mods (they're per-build, not per-vehicle, but a fresh body = fresh build)
+    Object.values(perfModsSelected).forEach(s => s.clear());
+
+    rebuildPartIndex();
+    rebuildCustomizationUI();
+    updateBuildSummary();
+    loadModel();
+}
+
+function rebuildCustomizationUI() {
+    const container = document.getElementById("categorySections");
+    if (container) container.innerHTML = "";
+    buildBodyStyleUI();
+    buildPartSelectorUI();
+    buildPerfModsUI();
+    if (window.refreshIcons) window.refreshIcons();
+}
+
+// Body style picker at the top of the customization panel
+function buildBodyStyleUI() {
+    const container = document.getElementById("categorySections");
+    if (!container) return;
+
+    const header = document.createElement("div");
+    header.className = "builder-section-group-label";
+    header.innerHTML = `<i data-lucide="car-front"></i> Body Style`;
+    container.appendChild(header);
+
+    const section = document.createElement("div");
+    section.className = "builder-section";
+    section.innerHTML = `
+        <div class="builder-section-body body-style-grid">
+            ${Object.entries(VEHICLES).map(([key, v]) => `
+                <button class="body-style-btn ${key === currentVehicleKey ? "active" : ""}"
+                        data-vehicle="${key}"
+                        onclick="switchVehicle('${key}')">
+                    <span class="bs-label">${v.label}</span>
+                    <span class="bs-sub">${v.sub || ""}</span>
+                </button>
+            `).join("")}
+            <div class="body-style-soon">
+                <span class="bs-label">More coming soon</span>
+                <span class="bs-sub">Sports car · Hyper car · Motorcycles</span>
+            </div>
+        </div>
+    `;
+    container.appendChild(section);
 }
 
 // Bounding box over VISIBLE meshes only (ignores hidden junk/variant meshes)
@@ -806,7 +933,18 @@ function updateBasePriceDisplay() {
     const model = document.getElementById("baseModel")?.value || "";
     const disp  = document.getElementById("basePriceDisplay");
     if (!disp) return;
-    if (!make || !model) { disp.textContent = "Select a vehicle above"; basePriceCents = 0; updateBuildSummary(); return; }
+    if (!make || !model) {
+        disp.textContent = "Select a vehicle above";
+        basePriceCents = 0;
+        updateModelMatchBanner("", "", false);
+        updateBuildSummary();
+        return;
+    }
+
+    // Load the best-matching 3D body for this real car
+    const match = matchVehicleModel(make, model, yr);
+    if (match.key !== currentVehicleKey) switchVehicle(match.key);
+    updateModelMatchBanner(make, model, match.exact);
 
     const lm = make.toLowerCase();
     let price = 30000;
@@ -893,6 +1031,8 @@ async function saveBuild() {
         const info = VARIANT_INFO[variant] || {};
         parts.push({ category: `visual:${cat}`, name: variant, cost: info.price || 0, effect: info.label || "", icon: "" });
     });
+    // Record which body this build uses
+    parts.push({ category: "vehicle", name: currentVehicleKey, cost: 0, effect: VEHICLES[currentVehicleKey].label, icon: "" });
 
     const payload = {
         name,
@@ -963,6 +1103,12 @@ async function loadBuild(id) {
         // Restore parts (visual variants + perf mods)
         let parts = [];
         try { parts = JSON.parse(build.parts_json || "[]"); } catch(e) {}
+
+        // Switch body first if the build uses a different vehicle
+        const vehiclePart = parts.find(p => p.category === "vehicle");
+        if (vehiclePart && VEHICLES[vehiclePart.name] && vehiclePart.name !== currentVehicleKey) {
+            switchVehicle(vehiclePart.name);
+        }
 
         // Reset perf mods first
         Object.values(perfModsSelected).forEach(s => s.clear());

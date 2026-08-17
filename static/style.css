@@ -1491,6 +1491,67 @@ input, textarea, select { font-family: var(--font); }
 .pv-label { font-size: 12px; font-weight: 600; }
 .pv-price { font-size: 10px; font-weight: 500; opacity: 0.65; }
 .part-variant-btn.active .pv-price { opacity: 0.9; }
+
+/* Model match banner */
+.model-match-banner {
+    position: absolute;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    backdrop-filter: blur(10px);
+    z-index: 6;
+    max-width: 90%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.model-match-banner i { width: 14px; height: 14px; flex-shrink: 0; }
+.model-match-banner.approx {
+    background: rgba(30, 41, 59, 0.85);
+    color: #cbd5e1;
+    border: 1px solid rgba(255,255,255,0.12);
+}
+.model-match-banner.exact {
+    background: rgba(22, 163, 74, 0.9);
+    color: #fff;
+    border: 1px solid rgba(255,255,255,0.2);
+}
+
+/* Body style picker */
+.body-style-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+.body-style-btn, .body-style-soon {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 14px 12px;
+    border-radius: 10px;
+    text-align: left;
+}
+.body-style-btn {
+    background: var(--bg);
+    border: 1.5px solid var(--border);
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+}
+.body-style-btn:hover  { border-color: var(--accent); }
+.body-style-btn.active { border-color: var(--accent); background: var(--accent-light); }
+.body-style-soon {
+    border: 1.5px dashed var(--border);
+    opacity: 0.55;
+}
+.bs-label { font-size: 13px; font-weight: 700; color: var(--text); }
+.bs-sub   { font-size: 11px; color: var(--text-muted); }
 .part-variant-btn:hover  { border-color: #334155; color: #e2e8f0; background: #1e293b; }
 .part-variant-btn.active { border-color: var(--accent); color: #fff; background: rgba(37,99,235,0.12); }
 
