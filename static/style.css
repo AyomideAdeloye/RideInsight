@@ -238,6 +238,10 @@ input, textarea, select { font-family: var(--font); }
     transition: box-shadow 0.15s;
 }
 .post-card:hover { box-shadow: var(--shadow-md); }
+.post-card.post-focused {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-light), var(--shadow-md);
+}
 
 .post-header {
     display: flex;
@@ -1216,6 +1220,28 @@ input, textarea, select { font-family: var(--font); }
     text-transform: uppercase;
     min-width: 50px;
 }
+/* Settings accent-color swatches */
+.color-scheme-picker {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+.color-scheme-picker .color-swatch {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    border: 3px solid transparent;
+    cursor: pointer;
+    transition: transform 0.15s, border-color 0.15s, box-shadow 0.15s;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.25);
+}
+.color-scheme-picker .color-swatch:hover  { transform: scale(1.15); }
+.color-scheme-picker .color-swatch.active {
+    border-color: var(--text);
+    transform: scale(1.12);
+    box-shadow: 0 0 0 2px var(--surface), 0 1px 6px rgba(0,0,0,0.3);
+}
+
 #colorWheel {
     width: 96px;
     height: 96px;
@@ -2139,10 +2165,17 @@ html.dark-mode .settings-nav {
 .conv-item.active { background: var(--accent-light); }
 .conv-item.unread .conv-name { font-weight: 700; }
 
-.conv-avatar-wrap { position: relative; flex-shrink: 0; }
+.conv-avatar-wrap {
+    position: relative;
+    flex-shrink: 0;
+    width: 38px;
+    height: 38px;   /* fixed box so layout holds even when the img is hidden */
+}
 .conv-avatar {
     width: 38px; height: 38px;
     border-radius: 50%; object-fit: cover;
+    position: relative;
+    z-index: 1;     /* real avatar covers the placeholder when present */
 }
 .conv-avatar-placeholder {
     width: 38px; height: 38px;
@@ -2156,6 +2189,7 @@ html.dark-mode .settings-nav {
     font-size: 15px;
     position: absolute;
     top: 0; left: 0;
+    z-index: 0;
 }
 .conv-info { flex: 1; min-width: 0; }
 .conv-name {

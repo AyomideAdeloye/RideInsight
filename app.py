@@ -68,8 +68,11 @@ def check_and_award_badges(conn, user_id):
                 "INSERT OR IGNORE INTO user_badges (user_id, badge_key, awarded_at) VALUES (?,?,?)",
                 (user_id, key, datetime.utcnow().strftime("%Y-%m-%d %H:%M"))
             )
+            uname_row = conn.execute("SELECT username FROM users WHERE id=?", (user_id,)).fetchone()
+            badge_link = f"/profile/{uname_row['username']}" if uname_row else ""
             add_notification(conn, user_id,
-                f"🏅 New badge unlocked: {BADGES[key]['icon']} {BADGES[key]['name']} — {BADGES[key]['desc']}")
+                f"🏅 New badge unlocked: {BADGES[key]['icon']} {BADGES[key]['name']} — {BADGES[key]['desc']}",
+                link=badge_link)
             earned.add(key)
 
     # Post milestones
@@ -186,11 +189,11 @@ def get_db_connection():
     conn.row_factory = sqlite3.Row
     return conn
 
-def add_notification(conn, user_id, text):
-    """Insert a notification row for the given user."""
+def add_notification(conn, user_id, text, link=""):
+    """Insert a notification row for the given user, with optional click-through link."""
     conn.execute(
-        "INSERT INTO notifications (user_id, text, created_at) VALUES (?, ?, ?)",
-        (user_id, text, datetime.utcnow().strftime("%Y-%m-%d %H:%M"))
+        "INSERT INTO notifications (user_id, text, created_at, link) VALUES (?, ?, ?, ?)",
+        (user_id, text, datetime.utcnow().strftime("%Y-%m-%d %H:%M"), link)
     )
 
 def time_ago(dt_str):
@@ -639,6 +642,12 @@ def init_db():
         except Exception:
             pass
 
+    # Migrate: add link to notifications (clickable notifications)
+    try:
+        conn.execute("ALTER TABLE notifications ADD COLUMN link TEXT DEFAULT ''")
+    except Exception:
+        pass
+
     # Seed sample posts if empty
     existing = conn.execute("SELECT COUNT(*) FROM posts").fetchone()[0]
     if existing == 0:
@@ -670,6 +679,11 @@ def home():
     return render_template("index.html")
 
 # Posts
+@app.route("/post/<int:post_id>")
+def post_permalink(post_id):
+    # Permalink → home feed focused on that post (feed JS scrolls + opens comments)
+    return redirect(f"/?post={post_id}")
+
 @app.route("/get_posts")
 def get_posts():
     query = sanitize(request.args.get("q", ""))
@@ -883,7 +897,8 @@ def like_post(post_id):
                               (post["username"],)).fetchone()
         if author and author["id"] != session["user_id"]:
             add_notification(conn, author["id"],
-                             f"@{session['username']} liked your post.")
+                             f"@{session['username']} liked your post.",
+                             link=f"/post/{post_id}")
             try:
                 check_and_award_badges(conn, author["id"])
             except Exception:
@@ -1066,7 +1081,8 @@ def add_comment():
                               (post["username"],)).fetchone()
         if author and author["id"] != session["user_id"]:
             add_notification(conn, author["id"],
-                             f"@{session['username']} commented on your post.")
+                             f"@{session['username']} commented on your post.",
+                             link=f"/post/{post_id}")
     conn.commit()
     conn.close()
     return jsonify({"message": "Comment added"})
@@ -1704,7 +1720,8 @@ def follow(target_id):
         conn.execute("INSERT INTO follows (follower_id, following_id) VALUES (?,?)",
                      (session["user_id"], target_id))
         add_notification(conn, target_id,
-                         f"@{session['username']} started following you.")
+                         f"@{session['username']} started following you.",
+                         link=f"/profile/{session.get('username','')}")
         action = "followed"
     conn.commit()
     try:
@@ -3091,10 +3108,11 @@ def send_message():
     # Create notification for receiver
     sender_username = session.get("username", "Someone")
     conn.execute("""
-        INSERT INTO notifications (user_id, text, is_read, created_at)
-        VALUES (?, ?, 0, ?)
+        INSERT INTO notifications (user_id, text, is_read, created_at, link)
+        VALUES (?, ?, 0, ?, ?)
     """, (receiver_id, f"💬 {sender_username} sent you a message",
-          datetime.utcnow().strftime("%Y-%m-%d %H:%M")))
+          datetime.utcnow().strftime("%Y-%m-%d %H:%M"),
+          f"/messages/{sender_username}"))
 
     conn.commit()
     conn.close()
@@ -3294,10 +3312,21 @@ def delete_account():
         conn.close()
         return jsonify({"error": "Incorrect password"}), 400
 
-    # Delete all user data across tables
+    username = session.get("username", "")
+
+    # 1) Mods hang off garage rows — delete before garage
+    try:
+        conn.execute("DELETE FROM mods WHERE car_id IN (SELECT id FROM garage WHERE user_id = ?)", (user_id,))
+    except Exception:
+        pass
+
+    # 2) Tables keyed by user_id
     tables_with_user_id = [
-        "posts", "garage", "comments", "comparisons", "likes",
-        "follows", "builds", "notifications", "race_results", "saved_posts"
+        "garage", "comparisons", "likes", "dislikes", "builds",
+        "notifications", "race_results", "saved_posts", "user_badges",
+        "generated_models", "listing_saves", "poll_votes",
+        "story_views", "meet_rsvps", "club_members",
+        "comment_likes", "comment_dislikes", "listings", "stories", "meets",
     ]
     for table in tables_with_user_id:
         try:
@@ -3305,9 +3334,21 @@ def delete_account():
         except Exception:
             pass
 
-    # follows table also has follower/following columns potentially
+    # 3) Tables keyed by username (posts/comments store the name, not the id)
+    if username:
+        for table in ("posts", "comments", "club_posts"):
+            try:
+                conn.execute(f"DELETE FROM {table} WHERE username = ?", (username,))
+            except Exception:
+                pass
+
+    # 4) Relationship tables with two-sided keys
     try:
         conn.execute("DELETE FROM follows WHERE follower_id = ? OR following_id = ?", (user_id, user_id))
+    except Exception:
+        pass
+    try:
+        conn.execute("DELETE FROM messages WHERE sender_id = ? OR receiver_id = ?", (user_id, user_id))
     except Exception:
         pass
 

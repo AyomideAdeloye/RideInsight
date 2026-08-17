@@ -121,6 +121,12 @@
                 {% if post["image"] %}
                 <img src="{{ post['image'] }}" class="post-image" loading="lazy">
                 {% endif %}
+                {% if post["gif_url"] %}
+                <img src="{{ post['gif_url'] }}" class="post-image post-gif" loading="lazy">
+                {% endif %}
+                {% if post["video_url"] %}
+                <video src="{{ post['video_url'] }}" class="post-video" controls playsinline preload="metadata" onclick="event.stopPropagation()"></video>
+                {% endif %}
             </div>
             {% else %}
             <p class="profile-empty-state">No activity yet.</p>
@@ -141,6 +147,12 @@
                 <p class="post-body">{{ post["body"] }}</p>
                 {% if post["image"] %}
                 <img src="{{ post['image'] }}" class="post-image" loading="lazy">
+                {% endif %}
+                {% if post["gif_url"] %}
+                <img src="{{ post['gif_url'] }}" class="post-image post-gif" loading="lazy">
+                {% endif %}
+                {% if post["video_url"] %}
+                <video src="{{ post['video_url'] }}" class="post-video" controls playsinline preload="metadata" onclick="event.stopPropagation()"></video>
                 {% endif %}
             </div>
             {% else %}

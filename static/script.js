@@ -384,6 +384,7 @@ async function votePoll(postId, optionIndex, el) {
 function createPostCard(post) {
     const card = document.createElement("div");
     card.classList.add("post-card");
+    card.id = `post-card-${post.id}`;
     card.innerHTML = `
         <div class="post-header">
             <div class="post-author">
@@ -798,6 +799,10 @@ async function loadNotifications() {
         div.classList.add("notif-item");
         if (!n.is_read) div.classList.add("unread");
         div.innerHTML = `<div>${esc(n.text)}</div><div class="notif-time">${esc(n.created_at)}</div>`;
+        if (n.link) {
+            div.style.cursor = "pointer";
+            div.onclick = () => { window.location.href = n.link; };
+        }
         list.appendChild(div);
     });
 }
@@ -1111,7 +1116,17 @@ async function submitStory() {
 if (document.getElementById("feed")) {
     const params = new URLSearchParams(window.location.search);
     const q = params.get("q");
-    loadPosts(q || "");
+    const focusPost = params.get("post");
+    loadPosts(q || "").then(() => {
+        if (!focusPost) return;
+        const card = document.getElementById(`post-card-${focusPost}`);
+        if (!card) return;
+        card.scrollIntoView({ behavior: "smooth", block: "start" });
+        card.classList.add("post-focused");
+        setTimeout(() => card.classList.remove("post-focused"), 2500);
+        // Open its comments
+        toggleComments(parseInt(focusPost, 10));
+    });
 }
 
 if (document.getElementById("storiesStrip")) {
