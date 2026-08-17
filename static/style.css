@@ -302,11 +302,14 @@ input, textarea, select { font-family: var(--font); }
 .post-body { color: var(--text); font-size: 15px; line-height: 1.6; }
 
 .post-image {
-    width: 100%;
-    max-height: 400px;
-    object-fit: cover;
+    display: block;
+    max-width: 100%;
+    width: auto;
+    max-height: 420px;
+    object-fit: contain;      /* never crop — show the whole image */
     border-radius: 10px;
-    margin-top: 14px;
+    margin: 14px auto 0;
+    background: var(--bg);
 }
 
 .post-actions {
@@ -2873,7 +2876,16 @@ html.dark-mode .stories-strip { background: var(--surface); border-color: var(--
 .link-preview-url   { font-size: 11px; color: var(--accent); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Post media in feed */
-.post-gif  { border-radius: 10px; max-height: 360px; object-fit: cover; width: 100%; margin-top: 8px; }
+.post-gif {
+    display: block;
+    max-width: 100%;
+    width: auto;
+    max-height: 360px;
+    object-fit: contain;      /* full GIF visible, no cut-off */
+    border-radius: 10px;
+    margin: 8px auto 0;
+    background: var(--bg);
+}
 .post-video {
     width: 100%;
     max-height: 420px;
