@@ -1188,6 +1188,15 @@ if (document.getElementById("feed")) {
         const params = new URLSearchParams(window.location.search);
         const q = params.get("q");
         const focusPost = params.get("post");
+
+        // Pre-fill composer when arriving from a Garage/Build share
+        if (params.get("share_title")) {
+            expandComposer();
+            const t = document.getElementById("composerTitle");
+            const b = document.getElementById("composerBody");
+            if (t) t.value = params.get("share_title");
+            if (b) b.value = params.get("share_body") || "";
+        }
         loadPosts(q || "").then(() => {
             if (!focusPost) return;
             const card = document.getElementById(`post-card-${focusPost}`);

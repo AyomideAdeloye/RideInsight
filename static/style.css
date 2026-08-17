@@ -1290,6 +1290,37 @@ input, textarea, select { font-family: var(--font); }
     text-transform: uppercase;
     min-width: 50px;
 }
+/* ─── Garage: Custom Build Cards ─────────────────────────────────── */
+.build-card { display: flex; flex-direction: column; }
+.build-card-top {
+    height: 90px;
+    border-radius: 10px 10px 0 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+}
+.build-card-top i { width: 42px; height: 42px; color: rgba(255,255,255,0.85); }
+.build-color-chip {
+    position: absolute;
+    bottom: 10px;
+    right: 12px;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    border: 2px solid rgba(255,255,255,0.8);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+}
+.build-stats-row {
+    display: flex;
+    gap: 14px;
+    margin: 10px 0 4px;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+.build-stats-row span { display: inline-flex; align-items: center; gap: 5px; }
+.build-stats-row i { width: 13px; height: 13px; }
+
 /* Settings accent-color swatches */
 .color-scheme-picker {
     display: flex;
@@ -1452,7 +1483,14 @@ input, textarea, select { font-family: var(--font); }
     cursor: pointer;
     transition: border-color 0.15s, color 0.15s, background 0.15s;
     text-align: center;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    align-items: center;
 }
+.pv-label { font-size: 12px; font-weight: 600; }
+.pv-price { font-size: 10px; font-weight: 500; opacity: 0.65; }
+.part-variant-btn.active .pv-price { opacity: 0.9; }
 .part-variant-btn:hover  { border-color: #334155; color: #e2e8f0; background: #1e293b; }
 .part-variant-btn.active { border-color: var(--accent); color: #fff; background: rgba(37,99,235,0.12); }
 

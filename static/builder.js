@@ -8,9 +8,9 @@ const PART_CATEGORIES = [
         label:    "Hood",
         icon:     "chevrons-up",
         variants: [
-            { name: "Hood_A", label: "Stock Hood" },
-            { name: "Hood_B", label: "Low Profile" },
-            { name: "Hood_C", label: "Vented Hood" },
+            { name: "Hood_A", label: "Stock Hood",  price: 0 },
+            { name: "Hood_B", label: "Low Profile", price: 650 },
+            { name: "Hood_C", label: "Vented Hood", price: 950 },
         ]
     },
     {
@@ -18,9 +18,9 @@ const PART_CATEGORIES = [
         label:    "Front Bumper",
         icon:     "shield",
         variants: [
-            { name: "FrontBumper_A", label: "Stock" },
-            { name: "FrontBumper_B", label: "Sport" },
-            { name: "FrontBumper_C", label: "Aggressive" },
+            { name: "FrontBumper_A", label: "Stock",      price: 0 },
+            { name: "FrontBumper_B", label: "Sport",      price: 550 },
+            { name: "FrontBumper_C", label: "Aggressive", price: 850 },
         ]
     },
     {
@@ -28,9 +28,9 @@ const PART_CATEGORIES = [
         label:    "Rear Bumper",
         icon:     "shield",
         variants: [
-            { name: "RearBumper_A", label: "Stock" },
-            { name: "RearBumper_B", label: "Sport" },
-            { name: "RearBumper_C", label: "Diffuser" },
+            { name: "RearBumper_A", label: "Stock",    price: 0 },
+            { name: "RearBumper_B", label: "Sport",    price: 500 },
+            { name: "RearBumper_C", label: "Diffuser", price: 800 },
         ]
     },
     {
@@ -38,9 +38,9 @@ const PART_CATEGORIES = [
         label:    "Spoiler",
         icon:     "flag",
         variants: [
-            { name: "Spoiler_A", label: "Lip Spoiler" },
-            { name: "Spoiler_B", label: "Sport Wing" },
-            { name: "Spoiler_C", label: "GT Wing" },
+            { name: "Spoiler_A", label: "Lip Spoiler", price: 0 },
+            { name: "Spoiler_B", label: "Sport Wing",  price: 400 },
+            { name: "Spoiler_C", label: "GT Wing",     price: 950 },
         ]
     },
     {
@@ -48,9 +48,9 @@ const PART_CATEGORIES = [
         label:    "Exhaust",
         icon:     "flame",
         variants: [
-            { name: "Exhaust_A", label: "Single Exit" },
-            { name: "Exhaust_B", label: "Dual Exit" },
-            { name: "Exhaust_C", label: "Quad Tips" },
+            { name: "Exhaust_A", label: "Single Exit", price: 0 },
+            { name: "Exhaust_B", label: "Dual Exit",   price: 450 },
+            { name: "Exhaust_C", label: "Quad Tips",   price: 900 },
         ]
     },
     {
@@ -58,9 +58,9 @@ const PART_CATEGORIES = [
         label:    "Fenders",
         icon:     "maximize-2",
         variants: [
-            { name: "Fender_A", label: "Stock" },
-            { name: "Fender_B", label: "Wide Body" },
-            { name: "Fender_C", label: "Flared" },
+            { name: "Fender_A", label: "Stock",     price: 0 },
+            { name: "Fender_B", label: "Wide Body", price: 1200 },
+            { name: "Fender_C", label: "Flared",    price: 750 },
         ]
     },
     {
@@ -68,12 +68,18 @@ const PART_CATEGORIES = [
         label:    "Side Skirts",
         icon:     "minus",
         variants: [
-            { name: "RunningBoard_A", label: "Standard" },
-            { name: "RunningBoard_B", label: "Sport" },
-            { name: "RunningBoard_C", label: "Carbon" },
+            { name: "RunningBoard_A", label: "Standard", price: 0 },
+            { name: "RunningBoard_B", label: "Sport",    price: 350 },
+            { name: "RunningBoard_C", label: "Carbon",   price: 600 },
         ]
     },
 ];
+
+// Lookup: variant mesh name → {label, price, categoryLabel}
+const VARIANT_INFO = {};
+PART_CATEGORIES.forEach(c => c.variants.forEach(v => {
+    VARIANT_INFO[v.name] = { label: v.label, price: v.price, category: c.label };
+}));
 
 // Meshes always visible (base car)
 const ALWAYS_VISIBLE = [
@@ -435,6 +441,9 @@ function swapPart(categoryKey, variantName) {
     selected[categoryKey] = variantName;
     setVariantVisible(variantName, true);
 
+    // Re-apply paint so newly shown parts match the current color
+    applyPaint(currentPaintHex);
+
     // Update button states
     const catEl = document.getElementById(`cat-${categoryKey}`);
     if (catEl) {
@@ -442,6 +451,7 @@ function swapPart(categoryKey, variantName) {
             btn.classList.toggle("active", btn.dataset.variant === variantName);
         });
     }
+    updateBuildSummary();
 }
 
 // Meshes excluded from paint
@@ -628,7 +638,8 @@ function buildPartSelectorUI() {
                             class="part-variant-btn ${i === 0 ? "active" : ""}"
                             data-variant="${v.name}"
                             onclick="swapPart('${cat.key}', '${v.name}')">
-                            ${v.label}
+                            <span class="pv-label">${v.label}</span>
+                            <span class="pv-price">${v.price > 0 ? "+$" + v.price.toLocaleString() : "Included"}</span>
                         </button>
                     `).join("")}
                 </div>
@@ -817,14 +828,25 @@ function updateBasePriceDisplay() {
 
 // ── Build summary ──────────────────────────────────────────────────────────
 function updateBuildSummary() {
-    let modTotal = 0;
+    let perfTotal = 0;
     const items = [];
 
+    // Visual upgrades (non-stock selections)
+    let visualTotal = 0;
+    Object.values(selected).forEach(variantName => {
+        const info = VARIANT_INFO[variantName];
+        if (info && info.price > 0) {
+            visualTotal += info.price;
+            items.push({ name: `${info.category}: ${info.label}`, cost: info.price });
+        }
+    });
+
+    // Performance mods
     Object.values(perfModsSelected).forEach(set => {
         set.forEach(modName => {
             const allMods = Object.values(PERF_MODS).flat();
             const mod = allMods.find(m => m.name === modName);
-            if (mod) { modTotal += mod.cost; items.push(mod); }
+            if (mod) { perfTotal += mod.cost; items.push(mod); }
         });
     });
 
@@ -833,16 +855,19 @@ function updateBuildSummary() {
     if (summaryList) {
         summaryList.innerHTML = items.length
             ? items.map(m => `<div class="summary-item"><span>${m.name}</span><span>$${m.cost.toLocaleString()}</span></div>`).join("")
-            : `<p class="empty-state" style="font-size:12px;padding:4px 0;">No performance mods added yet</p>`;
+            : `<p class="empty-state" style="font-size:12px;padding:4px 0;">Stock build — pick parts to customize</p>`;
     }
     if (partCount) partCount.textContent = `${items.length} mod${items.length !== 1 ? "s" : ""}`;
 
-    const summaryBase  = document.getElementById("summaryBase");
-    const summaryMods  = document.getElementById("summaryMods");
-    const summaryTotal = document.getElementById("summaryTotal");
-    if (summaryBase)  summaryBase.textContent  = basePriceCents ? `$${basePriceCents.toLocaleString()}` : "—";
-    if (summaryMods)  summaryMods.textContent  = `$${modTotal.toLocaleString()}`;
-    if (summaryTotal) summaryTotal.textContent = basePriceCents
+    const modTotal = perfTotal + visualTotal;
+    const summaryBase   = document.getElementById("summaryBase");
+    const summaryVisual = document.getElementById("summaryVisual");
+    const summaryMods   = document.getElementById("summaryMods");
+    const summaryTotal  = document.getElementById("summaryTotal");
+    if (summaryBase)   summaryBase.textContent   = basePriceCents ? `$${basePriceCents.toLocaleString()}` : "—";
+    if (summaryVisual) summaryVisual.textContent = `$${visualTotal.toLocaleString()}`;
+    if (summaryMods)   summaryMods.textContent   = `$${perfTotal.toLocaleString()}`;
+    if (summaryTotal)  summaryTotal.textContent  = basePriceCents
         ? `$${(basePriceCents + modTotal).toLocaleString()}` : `$${modTotal.toLocaleString()}`;
 }
 
@@ -863,9 +888,10 @@ async function saveBuild() {
             if (mod) parts.push({ category: cat, name: mod.name, cost: mod.cost, effect: mod.hp ? `+${mod.hp} hp` : "", icon: mod.icon || "" });
         });
     });
-    // Visual parts → parts list entries with $0 cost
+    // Visual parts → parts list entries with real prices
     Object.entries(selected).forEach(([cat, variant]) => {
-        parts.push({ category: `visual:${cat}`, name: variant, cost: 0, effect: "", icon: "" });
+        const info = VARIANT_INFO[variant] || {};
+        parts.push({ category: `visual:${cat}`, name: variant, cost: info.price || 0, effect: info.label || "", icon: "" });
     });
 
     const payload = {

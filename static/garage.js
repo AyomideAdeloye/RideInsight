@@ -259,6 +259,90 @@ function closeModalOutside(e, id) {
         document.getElementById(id).style.display = "none";
 }
 
+// ─── Custom Builds (from 3D builder) ───────────────────────────────
+async function loadBuilds() {
+    const grid  = document.getElementById("buildsGrid");
+    const empty = document.getElementById("buildsEmpty");
+    if (!grid) return;
+    try {
+        const res = await fetch("/get_builds");
+        if (!res.ok) throw new Error();
+        const builds = await res.json();
+        Array.from(grid.children).forEach(c => { if (c.id !== "buildsEmpty") c.remove(); });
+        if (!builds.length) { empty.style.display = "flex"; return; }
+        empty.style.display = "none";
+
+        builds.forEach(b => {
+            let parts = [];
+            try { parts = JSON.parse(b.parts_json || "[]"); } catch(e) {}
+            const visual = parts.filter(p => (p.category || "").startsWith("visual:") && p.cost > 0);
+            const perf   = parts.filter(p => !(p.category || "").startsWith("visual:"));
+            const modTotal   = parts.reduce((s, p) => s + (Number(p.cost) || 0), 0);
+            const grandTotal = (Number(b.base_price) || 0) + modTotal;
+            const vehicle = [b.base_year, b.base_make, b.base_model].filter(Boolean).join(" ") || "Custom Build";
+
+            const card = document.createElement("div");
+            card.className = "g-card build-card";
+            card.innerHTML = `
+                <div class="build-card-top" style="background:linear-gradient(135deg, ${esc(b.car_color || "#1f4ed8")}cc, #0f172a);">
+                    <i data-lucide="car-front"></i>
+                    <span class="build-color-chip" style="background:${esc(b.car_color || "#1f4ed8")};" title="Paint color"></span>
+                </div>
+                <div class="g-card-body">
+                    <div class="g-card-title-row">
+                        <h3 class="g-car-name">${esc(b.name || "Unnamed Build")}</h3>
+                        <button class="g-delete-btn" onclick="deleteBuildFromGarage(${b.id})" title="Delete build">
+                            <i data-lucide="trash-2"></i>
+                        </button>
+                    </div>
+                    <span class="g-trim">${esc(vehicle)}</span>
+                    <div class="build-stats-row">
+                        <span><i data-lucide="paintbrush"></i> ${visual.length} visual</span>
+                        <span><i data-lucide="zap"></i> ${perf.length} performance</span>
+                    </div>
+                    <div class="g-card-footer">
+                        <span class="g-total-cost">$${grandTotal.toLocaleString()}</span>
+                        <div class="g-card-actions">
+                            <button class="btn btn-ghost g-action-btn" onclick="window.location.href='/builder'">
+                                <i data-lucide="wrench"></i> Open
+                            </button>
+                            <button class="btn btn-ghost g-action-btn" onclick="shareBuildToFeed(${b.id})">
+                                <i data-lucide="share-2"></i> Share
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            grid.appendChild(card);
+        });
+        if (window.lucide) lucide.createIcons();
+        window._builds = builds;
+    } catch(e) {
+        if (empty) empty.style.display = "flex";
+    }
+}
+
+async function deleteBuildFromGarage(id) {
+    if (!confirm("Delete this build?")) return;
+    await csrfFetch(`/delete_build/${id}`, { method: "POST" });
+    loadBuilds();
+}
+
+function shareBuildToFeed(buildId) {
+    const b = (window._builds || []).find(x => x.id === buildId);
+    if (!b) return;
+    let parts = [];
+    try { parts = JSON.parse(b.parts_json || "[]"); } catch(e) {}
+    const modTotal   = parts.reduce((s, p) => s + (Number(p.cost) || 0), 0);
+    const grandTotal = (Number(b.base_price) || 0) + modTotal;
+    const vehicle    = [b.base_year, b.base_make, b.base_model].filter(Boolean).join(" ") || "custom ride";
+    const modList    = parts.filter(p => p.cost > 0).map(p => `• ${p.effect || p.name} — $${Number(p.cost).toLocaleString()}`).join("\n");
+
+    const title = `🔧 My build: ${b.name || "Unnamed"} (${vehicle})`;
+    const body  = `Just put this together in the 3D builder!\n\n${modList}\n\nTotal build: $${grandTotal.toLocaleString()}`;
+    window.location.href = `/?share_title=${encodeURIComponent(title)}&share_body=${encodeURIComponent(body)}`;
+}
+
 // Pre-fill composer if redirected from garage share
 (function() {
     const params = new URLSearchParams(window.location.search);
@@ -272,3 +356,4 @@ function closeModalOutside(e, id) {
 })();
 
 loadGarage();
+loadBuilds();
