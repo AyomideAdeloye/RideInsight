@@ -1130,6 +1130,56 @@ async function loadSinglePost(id) {
     toggleComments(id);
 }
 
+// ─── Image Lightbox (photos only, not GIFs) ───────────────────────
+let _lightbox = null;
+
+function openLightbox(src) {
+    if (!_lightbox) {
+        _lightbox = document.createElement("div");
+        _lightbox.className = "img-lightbox";
+        _lightbox.innerHTML = `
+            <button class="img-lightbox-close" title="Close">&times;</button>
+            <img class="img-lightbox-img" alt="">
+        `;
+        document.body.appendChild(_lightbox);
+
+        const img = _lightbox.querySelector(".img-lightbox-img");
+
+        // Click background or × → close
+        _lightbox.addEventListener("click", e => {
+            if (e.target !== img) closeLightbox();
+        });
+        // Click image → toggle zoom
+        img.addEventListener("click", () => {
+            img.classList.toggle("zoomed");
+        });
+        // Esc → close
+        document.addEventListener("keydown", e => {
+            if (e.key === "Escape") closeLightbox();
+        });
+    }
+    const img = _lightbox.querySelector(".img-lightbox-img");
+    img.src = src;
+    img.classList.remove("zoomed");
+    _lightbox.classList.add("open");
+    document.body.style.overflow = "hidden";
+}
+
+function closeLightbox() {
+    if (!_lightbox) return;
+    _lightbox.classList.remove("open");
+    document.body.style.overflow = "";
+}
+
+// Delegate: any post photo (but NOT GIFs) opens the lightbox
+document.addEventListener("click", e => {
+    const t = e.target;
+    if (t.tagName === "IMG" && t.classList.contains("post-image") && !t.classList.contains("post-gif")) {
+        e.stopPropagation();
+        openLightbox(t.src);
+    }
+}, true);
+
 // ─── Init ─────────────────────────────────────────────────────────
 if (document.getElementById("feed")) {
     if (window.SINGLE_POST_ID) {
