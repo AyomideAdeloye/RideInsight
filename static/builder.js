@@ -78,12 +78,48 @@ const MUSCLECAR_CATEGORIES = [
 // ── Vehicle registry (RI-VAS) ──────────────────────────────────────────────
 // Add a new body: drop the GLB in /static/models/, add an entry here with its
 // part categories. Everything else (UI, paint, save/load) adapts automatically.
+// Mazda 6 GJ (2014–2018) — first in-house model. Tripo → Blender → RI-VAS.
+// Only stock (_A) parts exist so far; _B/_C variants get added as they're modeled.
+const MAZDA6_GJ_CATEGORIES = [
+    {
+        key:      "Hood",
+        label:    "Hood",
+        icon:     "chevrons-up",
+        variants: [
+            { name: "Hood_A", label: "Stock Hood", price: 0 },
+        ]
+    },
+    {
+        key:      "FrontBumper",
+        label:    "Front Bumper",
+        icon:     "shield",
+        variants: [
+            { name: "FrontBumper_A", label: "Stock", price: 0 },
+        ]
+    },
+    {
+        key:      "RearBumper",
+        label:    "Rear Bumper",
+        icon:     "shield",
+        variants: [
+            { name: "RearBumper_A", label: "Stock", price: 0 },
+        ]
+    },
+];
+
 const VEHICLES = {
     musclecar: {
         label:      "Muscle Car",
         sub:        "'67 American V8",
         glb:        "/static/models/musclecar.glb",
         categories: MUSCLECAR_CATEGORIES,
+    },
+    mazda6_gj: {
+        label:      "Mazda 6",
+        sub:        "GJ · 2014–2018",
+        glb:        "/static/models/mazda6_gj.glb",
+        categories: MAZDA6_GJ_CATEGORIES,
+        rotationY:  0,        // Tripo exports already face +Z; muscle car needs PI
     },
     // sportscar:  { label: "Sports Car",  sub: "Modern coupe",  glb: "/static/models/sportscar.glb",  categories: [...] },
     // hypercar:   { label: "Hyper Car",   sub: "Exotic",        glb: "/static/models/hypercar.glb",   categories: [...] },
@@ -93,8 +129,9 @@ const VEHICLES = {
 // exact: specific make/model (+optional year range) → a dedicated model
 // archetype: fallback by vehicle character when no exact model exists yet
 const MODEL_MATCHERS = [
-    // Exact models (add entries as the asset library grows)
-    // { make: "dodge", model: "charger", years: [2011, 2023], vehicle: "charger_ld", exact: true },
+    // ── Exact models (in-house, RI-VAS compliant) ──
+    { make: "mazda", model: "6", modelExact: true, years: [2014, 2018], vehicle: "mazda6_gj", exact: true },
+    { make: "mazda", model: "mazda6", modelExact: true, years: [2014, 2018], vehicle: "mazda6_gj", exact: true },
 
     // Archetype fallbacks — muscle/pony/performance RWD cars → muscle car body
     { make: "ford",      model: "mustang",    vehicle: "musclecar" },
@@ -112,10 +149,14 @@ function matchVehicleModel(make, model, year) {
     const md = (model || "").toLowerCase();
     const yr = parseInt(year, 10) || 0;
     for (const rule of MODEL_MATCHERS) {
-        if (m.includes(rule.make) && md.includes(rule.model)) {
-            if (rule.years && (yr < rule.years[0] || yr > rule.years[1])) continue;
-            return { key: rule.vehicle, exact: !!rule.exact };
-        }
+        if (!m.includes(rule.make)) continue;
+        // modelExact avoids false hits on short names ("6" matching "626"/"MX-6")
+        const modelHit = rule.modelExact
+            ? md.replace(/[\s-]/g, "") === rule.model
+            : md.includes(rule.model);
+        if (!modelHit) continue;
+        if (rule.years && (yr < rule.years[0] || yr > rule.years[1])) continue;
+        return { key: rule.vehicle, exact: !!rule.exact };
     }
     return { key: "musclecar", exact: false };   // default body for now
 }
@@ -425,8 +466,9 @@ function loadModel() {
 
             applyVisibility();
 
-            // Rotate to face camera (Blender exports front facing -Z, Three.js camera looks at +Z)
-            carModel.rotation.y = Math.PI;
+            // Rotate to face camera (per-vehicle: some exports already face +Z)
+            const rotY = VEHICLES[currentVehicleKey].rotationY;
+            carModel.rotation.y = (rotY === undefined) ? Math.PI : rotY;
 
             // Scale first using the car's footprint (length × width, not height)
             const box0  = visibleBox(carModel);
