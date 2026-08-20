@@ -231,6 +231,18 @@ function matchesVariant(meshName, variantName) {
     return re.test(meshName);
 }
 
+// Blender/GLTF sometimes puts the RI-VAS name on the parent node while the
+// mesh itself keeps a UUID name. Walk up to find the meaningful name.
+const RIVAS_NAME_RE = /(SM_Wheel|Interior|Body|Hood_|FrontBumper_|RearBumper_|Fender_|Spoiler_|Exhaust_|RunningBoard_|SKM_|Glass|Lights|Grille|Chrome|Trim)/i;
+function effectiveName(node) {
+    let n = node;
+    for (let i = 0; i < 4 && n; i++) {
+        if (n.name && RIVAS_NAME_RE.test(n.name)) return n.name;
+        n = n.parent;
+    }
+    return node.name || "";
+}
+
 // Meshes that must NEVER render (skinned duplicate of the whole car —
 // without its armature it explodes into stretched "filament" geometry)
 function isJunkMesh(name) {
@@ -435,10 +447,12 @@ function loadModel() {
             const junkNodes = [];
             carModel.traverse(node => {
                 if (!node.isMesh) return;
-                meshMap[node.name] = node;
+                const name = effectiveName(node);
+                node.userData.rivasName = name;
+                meshMap[name] = node;
 
                 // Skinned duplicate car → permanently hidden
-                if (isJunkMesh(node.name)) {
+                if (isJunkMesh(name)) {
                     junkNodes.push(node);
                     node.visible = false;
                     return;
@@ -448,13 +462,13 @@ function loadModel() {
                 node.receiveShadow = true;
 
                 // Try to assign to a part variant
-                const variant = ALL_PART_MESHES.find(v => matchesVariant(node.name, v));
+                const variant = ALL_PART_MESHES.find(v => matchesVariant(name, v));
                 if (variant) {
                     partNodes[variant].push(node);
-                } else if (isBaseMesh(node.name)) {
+                } else if (isBaseMesh(name)) {
                     baseNodes.push(node);
                 } else {
-                    unmatched.push(node.name);
+                    unmatched.push(name);
                     baseNodes.push(node);   // unknown → keep visible
                 }
             });
@@ -640,7 +654,7 @@ function applyPaint(hex) {
     const color = new THREE.Color(hex).convertSRGBToLinear();
     carModel.traverse(node => {
         if (!node.isMesh) return;
-        if (isWheelOrInterior(node.name)) return;
+        if (isWheelOrInterior(node.userData.rivasName || effectiveName(node))) return;
         const mats = Array.isArray(node.material) ? node.material : [node.material];
         mats.forEach(mat => {
             if (!mat || !mat.color) return;
@@ -657,15 +671,29 @@ function applyPaint(hex) {
 function prepMaterials() {
     if (!carModel) return;
     const matNames = new Set();
+
+    // Wheels/interior often SHARE one material with the body (common in AI exports).
+    // Give them their own copy so body paint doesn't tint them.
+    carModel.traverse(node => {
+        if (!node.isMesh || !node.material) return;
+        const rivas = node.userData.rivasName || effectiveName(node);
+        if (!isWheelOrInterior(rivas)) return;
+        node.material = Array.isArray(node.material)
+            ? node.material.map(m => m && m.clone())
+            : node.material.clone();
+    });
+
     carModel.traverse(node => {
         if (!node.isMesh) return;
         const mats = Array.isArray(node.material) ? node.material : [node.material];
+        const rivas = node.userData.rivasName || effectiveName(node);
         mats.forEach(mat => {
             if (!mat) return;
             if (mat.name) matNames.add(mat.name);
             // Leave lights/glass/chrome/trim untouched
             if (mat.name && NO_PAINT_MATERIAL.test(mat.name)) return;
-            if (isWheelOrInterior(node.name)) {
+            if (isWheelOrInterior(rivas)) {
+                mat.color.set(0x2a2d31);   // dark wheel/tire tone
                 mat.roughness = 0.8;
                 mat.metalness = 0.1;
             } else {
