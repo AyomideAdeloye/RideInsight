@@ -251,14 +251,39 @@ function isJunkMesh(name) {
 
 // Is this mesh part of the always-visible base (body shell, interior, wheels)?
 function isBaseMesh(name) {
-    if (/SM_Wheel/.test(name)) return true;
-    if (/(^|_)Interior(_\d+)?$/.test(name)) return true;
-    if (/(^|_)Body(_\d+)?$/.test(name)) return true;
+    if (/SM_Wheel/i.test(name)) return true;
+    if (/(^|_)Interior(_\d+)?$/i.test(name)) return true;
+    if (/(^|_)Body(_\d+)?$/i.test(name)) return true;
+    if (/Glass|Window|Windshield|Lights?|Headlight|Taillight|Lamp|Grille|Chrome|Trim|Emblem|Badge|Mirror/i.test(name)) return true;
     return false;
 }
 
+// Parts that keep their own look instead of taking body paint
 function isWheelOrInterior(name) {
-    return /SM_Wheel/.test(name) || /(^|_)Interior(_\d+)?$/.test(name);
+    return /SM_Wheel/i.test(name)
+        || /(^|_)Interior(_\d+)?$/i.test(name)
+        || /Glass|Window|Windshield/i.test(name)
+        || /Lights?|Headlight|Taillight|Lamp/i.test(name)
+        || /Grille|Chrome|Trim|Emblem|Badge|Mirror/i.test(name);
+}
+
+// Per-part-type material presets applied on load
+function styleForPart(name) {
+    if (/Glass|Window|Windshield/i.test(name))
+        return { color: 0x11161c, roughness: 0.05, metalness: 0.1, opacity: 0.75, transparent: true };
+    if (/Headlight|Lights?|Lamp/i.test(name))
+        return { color: 0xdfe8f2, roughness: 0.08, metalness: 0.2 };
+    if (/Taillight/i.test(name))
+        return { color: 0x8c1220, roughness: 0.15, metalness: 0.2 };
+    if (/Grille/i.test(name))
+        return { color: 0x1c1f24, roughness: 0.45, metalness: 0.6 };
+    if (/Chrome|Trim|Emblem|Badge|Mirror/i.test(name))
+        return { color: 0xc9ced6, roughness: 0.12, metalness: 0.95 };
+    if (/SM_Wheel/i.test(name))
+        return { color: 0x2a2d31, roughness: 0.8, metalness: 0.1 };
+    if (/Interior/i.test(name))
+        return { color: 0x23262b, roughness: 0.85, metalness: 0.05 };
+    return null;
 }
 
 // ── Performance mods (stat-based, no visual mesh swap) ─────────────────────
@@ -692,8 +717,13 @@ function prepMaterials() {
             if (mat.name) matNames.add(mat.name);
             // Leave lights/glass/chrome/trim untouched
             if (mat.name && NO_PAINT_MATERIAL.test(mat.name)) return;
-            if (isWheelOrInterior(rivas)) {
-                mat.color.set(0x2a2d31);   // dark wheel/tire tone
+            const preset = styleForPart(rivas);
+            if (preset) {
+                if (preset.color !== undefined) mat.color.set(preset.color);
+                if (preset.roughness !== undefined) mat.roughness = preset.roughness;
+                if (preset.metalness !== undefined) mat.metalness = preset.metalness;
+                if (preset.transparent) { mat.transparent = true; mat.opacity = preset.opacity; }
+            } else if (isWheelOrInterior(rivas)) {
                 mat.roughness = 0.8;
                 mat.metalness = 0.1;
             } else {
