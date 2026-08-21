@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="badges-page">
+
+    <div class="badges-header">
+        <h2><i data-lucide="award"></i> Badges</h2>
+        <p class="badges-subtitle">
+            You've unlocked <strong>{{ earned_count }}</strong> of {{ total }} badges
+        </p>
+        <div class="badges-progress">
+            <div class="badges-progress-fill"
+                 style="width: {{ (earned_count / total * 100) | round(0, 'floor') }}%;"></div>
+        </div>
+    </div>
+
+    <div class="badges-grid">
+        {% for b in badges %}
+        <div class="badge-card {% if not b.earned %}locked{% endif %}">
+            <div class="badge-icon" {% if b.earned %}style="background: {{ b.color }}22; border-color: {{ b.color }};"{% endif %}>
+                {{ b.icon }}
+            </div>
+            <div class="badge-body">
+                <div class="badge-name" {% if b.earned %}style="color: {{ b.color }};"{% endif %}>{{ b.name }}</div>
+                <div class="badge-desc">{{ b.desc }}</div>
+                {% if b.earned and b.awarded_at %}
+                <div class="badge-date"><i data-lucide="check-circle"></i> Unlocked {{ b.awarded_at[:10] }}</div>
+                {% elif not b.earned %}
+                <div class="badge-locked-label"><i data-lucide="lock"></i> Locked</div>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+</div>
+{% endblock %}

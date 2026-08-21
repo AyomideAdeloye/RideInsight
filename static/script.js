@@ -1265,3 +1265,78 @@ if (document.getElementById("notifBadge")) {
         t = setTimeout(apply, 180);
     });
 })();
+
+// ─── Drafts ───────────────────────────────────────────────────────
+let _currentDraftId = null;
+
+async function saveDraft() {
+    const title = document.getElementById("composerTitle")?.value.trim() || "";
+    const body  = document.getElementById("composerBody")?.value.trim()  || "";
+
+    if (!title && !body) {
+        showDraftToast("Nothing to save yet", true);
+        return;
+    }
+
+    const payload = {
+        id:       _currentDraftId,
+        title,
+        body,
+        car:      "",
+        gif_url:  _selectedGifUrl || "",
+        link_url: _linkData?.url || "",
+    };
+
+    try {
+        const res = await csrfFetch("/api/drafts/save", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+            _currentDraftId = null;
+            collapseComposer();
+            showDraftToast("Draft saved — find it under Drafts");
+        } else {
+            showDraftToast("Could not save draft", true);
+        }
+    } catch (e) {
+        showDraftToast("Could not save draft", true);
+    }
+}
+
+function showDraftToast(msg, isError = false) {
+    document.querySelectorAll(".compare-toast").forEach(t => t.remove());
+    const t = document.createElement("div");
+    t.className = "compare-toast" + (isError ? " toast-error" : "");
+    t.innerHTML = `<i data-lucide="${isError ? "alert-circle" : "check-circle"}"></i><span>${msg}</span>`;
+    document.body.appendChild(t);
+    if (window.refreshIcons) window.refreshIcons();
+    setTimeout(() => t.remove(), 3200);
+}
+
+// Restore a draft handed over from the Drafts page
+(function restoreDraftIntoComposer() {
+    const raw = sessionStorage.getItem("ri_draft");
+    if (!raw) return;
+    sessionStorage.removeItem("ri_draft");
+
+    const load = () => {
+        let d;
+        try { d = JSON.parse(raw); } catch (e) { return; }
+        if (!document.getElementById("composerTitle")) return;
+
+        expandComposer();
+        _currentDraftId = d.id || null;
+        document.getElementById("composerTitle").value = d.title || "";
+        document.getElementById("composerBody").value  = d.body  || "";
+        if (d.gif_url) selectGif(d.gif_url);
+        onComposerInput();
+    };
+
+    if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", load);
+    } else {
+        load();
+    }
+})();

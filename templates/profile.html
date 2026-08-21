@@ -59,6 +59,42 @@
                 <span><strong>{{ follower_count }}</strong> followers</span>
                 <span><strong>{{ following_count }}</strong> following</span>
             </div>
+
+            {% set ig = user.get('social_instagram') %}
+            {% set tt = user.get('social_tiktok') %}
+            {% set yt = user.get('social_youtube') %}
+            {% set xx = user.get('social_x') %}
+            {% set web = user.get('social_website') %}
+            {% if ig or tt or yt or xx or web %}
+            <div class="profile-socials">
+                {% if ig %}
+                <a class="profile-social-link" style="background:linear-gradient(45deg,#f09433,#dc2743,#bc1888);"
+                   href="{{ ig if ig.startswith('http') else 'https://instagram.com/' ~ ig.lstrip('@') }}"
+                   target="_blank" rel="noopener" title="Instagram"><i data-lucide="instagram"></i></a>
+                {% endif %}
+                {% if tt %}
+                <a class="profile-social-link" style="background:#111;"
+                   href="{{ tt if tt.startswith('http') else 'https://tiktok.com/@' ~ tt.lstrip('@') }}"
+                   target="_blank" rel="noopener" title="TikTok"><i data-lucide="music-2"></i></a>
+                {% endif %}
+                {% if yt %}
+                <a class="profile-social-link" style="background:#ff0000;"
+                   href="{{ yt if yt.startswith('http') else 'https://youtube.com/@' ~ yt.lstrip('@') }}"
+                   target="_blank" rel="noopener" title="YouTube"><i data-lucide="youtube"></i></a>
+                {% endif %}
+                {% if xx %}
+                <a class="profile-social-link" style="background:#111;"
+                   href="{{ xx if xx.startswith('http') else 'https://x.com/' ~ xx.lstrip('@') }}"
+                   target="_blank" rel="noopener" title="X"><i data-lucide="at-sign"></i></a>
+                {% endif %}
+                {% if web %}
+                <a class="profile-social-link" style="background:var(--accent);"
+                   href="{{ web if web.startswith('http') else 'https://' ~ web }}"
+                   target="_blank" rel="noopener" title="Website"><i data-lucide="globe"></i></a>
+                {% endif %}
+            </div>
+            {% endif %}
+
             <div class="profile-badges" id="profileBadges"></div>
         </div>
 

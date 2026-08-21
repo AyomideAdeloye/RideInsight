@@ -10,6 +10,7 @@
             <button class="settings-nav-item" data-section="privacy" onclick="showSection('privacy')"><i data-lucide="lock"></i> Privacy</button>
             <button class="settings-nav-item" data-section="notifications" onclick="showSection('notifications')"><i data-lucide="bell"></i> Notifications</button>
             <button class="settings-nav-item" data-section="appearance" onclick="showSection('appearance')"><i data-lucide="palette"></i> Appearance</button>
+            <button class="settings-nav-item" data-section="socials" onclick="showSection('socials')"><i data-lucide="link"></i> Social Links</button>
             <button class="settings-nav-item" data-section="saved" onclick="showSection('saved')"><i data-lucide="bookmark"></i> Saved Posts</button>
             <button class="settings-nav-item danger-nav" data-section="danger" onclick="showSection('danger')"><i data-lucide="triangle-alert"></i> Danger Zone</button>
         </div>
@@ -148,6 +149,49 @@
                         {% endfor %}
                     </div>
                     <div class="settings-msg" id="schemeMsg"></div>
+                </div>
+            </div>
+
+            <!-- Social Links -->
+            <div class="settings-section" id="section-socials">
+                <h3>Social Links</h3>
+                <div class="settings-card">
+                    <p style="color:var(--text-muted);font-size:13px;margin-bottom:16px;">
+                        Add your handles or full profile URLs. These show on your profile page.
+                    </p>
+
+                    <div class="social-input-row">
+                        <span class="social-icon ig"><i data-lucide="instagram"></i></span>
+                        <input type="text" id="socialInstagram" placeholder="@yourhandle"
+                               value="{{ user.social_instagram or '' }}">
+                    </div>
+
+                    <div class="social-input-row">
+                        <span class="social-icon tt"><i data-lucide="music-2"></i></span>
+                        <input type="text" id="socialTiktok" placeholder="@yourhandle"
+                               value="{{ user.social_tiktok or '' }}">
+                    </div>
+
+                    <div class="social-input-row">
+                        <span class="social-icon yt"><i data-lucide="youtube"></i></span>
+                        <input type="text" id="socialYoutube" placeholder="@yourchannel"
+                               value="{{ user.social_youtube or '' }}">
+                    </div>
+
+                    <div class="social-input-row">
+                        <span class="social-icon x"><i data-lucide="at-sign"></i></span>
+                        <input type="text" id="socialX" placeholder="@yourhandle"
+                               value="{{ user.social_x or '' }}">
+                    </div>
+
+                    <div class="social-input-row">
+                        <span class="social-icon web"><i data-lucide="globe"></i></span>
+                        <input type="text" id="socialWebsite" placeholder="yoursite.com"
+                               value="{{ user.social_website or '' }}">
+                    </div>
+
+                    <button class="btn btn-primary" onclick="saveSocials()">Save Social Links</button>
+                    <div class="settings-msg" id="socialsMsg"></div>
                 </div>
             </div>
 

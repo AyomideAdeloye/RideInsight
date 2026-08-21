@@ -73,9 +73,6 @@
                     </div>
                 </div>
                 <div class="profile-dropdown-divider"></div>
-                <a class="profile-dropdown-item" href="/settings">
-                    <i data-lucide="settings"></i> Settings
-                </a>
                 <a class="profile-dropdown-item" href="/garage">
                     <i data-lucide="car"></i> My Garage
                 </a>
@@ -84,6 +81,18 @@
                 </a>
                 <a class="profile-dropdown-item" href="/race">
                     <i data-lucide="flag"></i> Race Mode
+                </a>
+                <a class="profile-dropdown-item" href="/badges">
+                    <i data-lucide="award"></i> Badges
+                    {% if badge_count %}<span class="dropdown-count">{{ badge_count }}</span>{% endif %}
+                </a>
+                <a class="profile-dropdown-item" href="/drafts">
+                    <i data-lucide="file-text"></i> Drafts
+                    {% if draft_count %}<span class="dropdown-count">{{ draft_count }}</span>{% endif %}
+                </a>
+                <div class="profile-dropdown-divider"></div>
+                <a class="profile-dropdown-item" href="/settings">
+                    <i data-lucide="settings"></i> Settings
                 </a>
                 <div class="profile-dropdown-divider"></div>
                 <a class="profile-dropdown-item danger" href="/logout">

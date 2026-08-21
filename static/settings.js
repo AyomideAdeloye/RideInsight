@@ -210,3 +210,25 @@ async function confirmDeleteAccount() {
         window.location.href = "/login";
     }
 }
+// ─── Social links ─────────────────────────────────────────────────
+async function saveSocials() {
+    const payload = {
+        instagram: document.getElementById("socialInstagram")?.value.trim() || "",
+        tiktok:    document.getElementById("socialTiktok")?.value.trim()    || "",
+        youtube:   document.getElementById("socialYoutube")?.value.trim()   || "",
+        x:         document.getElementById("socialX")?.value.trim()         || "",
+        website:   document.getElementById("socialWebsite")?.value.trim()   || "",
+    };
+    try {
+        const res = await csrfFetch("/settings/update_socials", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.error) showMsg("socialsMsg", data.error, true);
+        else            showMsg("socialsMsg", "Social links saved");
+    } catch (e) {
+        showMsg("socialsMsg", "Could not save", true);
+    }
+}

@@ -142,16 +142,29 @@ def inject_globals():
         except Exception:
             pass
     color_scheme = "blue"
+    badge_count  = 0
+    draft_count  = 0
     if "user_id" in session:
         try:
             conn2 = get_db_connection()
             u2 = conn2.execute("SELECT color_scheme FROM users WHERE id = ?", (session["user_id"],)).fetchone()
             if u2 and u2["color_scheme"]:
                 color_scheme = u2["color_scheme"]
+            badge_count = conn2.execute(
+                "SELECT COUNT(*) FROM user_badges WHERE user_id=?", (session["user_id"],)
+            ).fetchone()[0]
+            try:
+                draft_count = conn2.execute(
+                    "SELECT COUNT(*) FROM drafts WHERE user_id=?", (session["user_id"],)
+                ).fetchone()[0]
+            except Exception:
+                draft_count = 0
             conn2.close()
         except Exception:
             pass
-    return {"dark_mode": dark_mode, "unread_msgs": unread_msgs, "color_scheme": color_scheme}
+    return {"dark_mode": dark_mode, "unread_msgs": unread_msgs,
+            "color_scheme": color_scheme, "badge_count": badge_count,
+            "draft_count": draft_count, "ALL_BADGES": BADGES}
 
 
 ALLOWED_TAGS = []  # strip all HTML from user text
@@ -639,6 +652,28 @@ def init_db():
     for col in ["poll_question TEXT", "poll_options TEXT"]:
         try:
             conn.execute(f"ALTER TABLE posts ADD COLUMN {col}")
+        except Exception:
+            pass
+
+    # Drafts: unposted composer content
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS drafts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            title TEXT DEFAULT '',
+            body TEXT DEFAULT '',
+            car TEXT DEFAULT '',
+            gif_url TEXT DEFAULT '',
+            link_url TEXT DEFAULT '',
+            updated_at TEXT DEFAULT ''
+        )
+    """)
+
+    # Migrate: social media links on profiles
+    for col in ["social_instagram", "social_tiktok", "social_youtube",
+                "social_x", "social_website"]:
+        try:
+            conn.execute(f"ALTER TABLE users ADD COLUMN {col} TEXT DEFAULT ''")
         except Exception:
             pass
 
@@ -1539,6 +1574,110 @@ def save_comparison():
 @app.route("/saved")
 def saved():
     return render_template("saved.html")
+
+# ─── Badges ───────────────────────────────────────────────────────
+@app.route("/badges")
+def badges_page():
+    if "user_id" not in session:
+        return redirect(url_for("login"))
+    conn = get_db_connection()
+    rows = conn.execute(
+        "SELECT badge_key, awarded_at FROM user_badges WHERE user_id=?",
+        (session["user_id"],)
+    ).fetchall()
+    conn.close()
+    earned = {r["badge_key"]: r["awarded_at"] for r in rows}
+    badges = [
+        {**meta, "key": key, "earned": key in earned, "awarded_at": earned.get(key, "")}
+        for key, meta in BADGES.items()
+    ]
+    # Unlocked first, then locked
+    badges.sort(key=lambda b: (not b["earned"], b["name"]))
+    return render_template("badges.html", badges=badges,
+                           earned_count=len(earned), total=len(BADGES))
+
+# ─── Drafts ───────────────────────────────────────────────────────
+@app.route("/drafts")
+def drafts_page():
+    if "user_id" not in session:
+        return redirect(url_for("login"))
+    return render_template("drafts.html")
+
+@app.route("/api/drafts")
+def api_drafts():
+    if "user_id" not in session:
+        return jsonify([])
+    conn = get_db_connection()
+    rows = conn.execute(
+        "SELECT * FROM drafts WHERE user_id=? ORDER BY id DESC",
+        (session["user_id"],)
+    ).fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
+
+@csrf.exempt
+@app.route("/api/drafts/save", methods=["POST"])
+def api_draft_save():
+    if "user_id" not in session:
+        return jsonify({"error": "Not logged in"}), 401
+    d = request.json or {}
+    title = sanitize(d.get("title", ""))
+    body  = sanitize(d.get("body", ""))
+    car   = sanitize(d.get("car", ""))
+    gif   = sanitize(d.get("gif_url", ""))
+    link  = sanitize(d.get("link_url", ""))
+    if not (title or body):
+        return jsonify({"error": "Draft is empty"}), 400
+    now = datetime.utcnow().strftime("%Y-%m-%d %H:%M")
+    conn = get_db_connection()
+    draft_id = d.get("id")
+    if draft_id:
+        conn.execute("""UPDATE drafts SET title=?, body=?, car=?, gif_url=?,
+                        link_url=?, updated_at=? WHERE id=? AND user_id=?""",
+                     (title, body, car, gif, link, now, int(draft_id), session["user_id"]))
+    else:
+        conn.execute("""INSERT INTO drafts (user_id, title, body, car, gif_url,
+                        link_url, updated_at) VALUES (?,?,?,?,?,?,?)""",
+                     (session["user_id"], title, body, car, gif, link, now))
+    conn.commit()
+    conn.close()
+    return jsonify({"message": "Draft saved"})
+
+@csrf.exempt
+@app.route("/api/drafts/<int:draft_id>/delete", methods=["POST"])
+def api_draft_delete(draft_id):
+    if "user_id" not in session:
+        return jsonify({"error": "Not logged in"}), 401
+    conn = get_db_connection()
+    row = conn.execute("SELECT user_id FROM drafts WHERE id=?", (draft_id,)).fetchone()
+    if not row or row["user_id"] != session["user_id"]:
+        conn.close()
+        return jsonify({"error": "Unauthorized"}), 403
+    conn.execute("DELETE FROM drafts WHERE id=?", (draft_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({"message": "Deleted"})
+
+# ─── Social links ─────────────────────────────────────────────────
+@csrf.exempt
+@app.route("/settings/update_socials", methods=["POST"])
+def update_socials():
+    if "user_id" not in session:
+        return jsonify({"error": "Not logged in"}), 401
+    d = request.json or {}
+    fields = ["instagram", "tiktok", "youtube", "x", "website"]
+    vals = []
+    for f in fields:
+        v = sanitize(d.get(f, "")).strip()
+        # Accept either a handle or a full URL; store as given (max 200 chars)
+        vals.append(v[:200])
+    conn = get_db_connection()
+    conn.execute("""UPDATE users SET social_instagram=?, social_tiktok=?,
+                    social_youtube=?, social_x=?, social_website=? WHERE id=?""",
+                 (*vals, session["user_id"]))
+    conn.commit()
+    conn.close()
+    return jsonify({"message": "Social links saved"})
 
 @app.route("/get_comparisons")
 def get_comparisons():

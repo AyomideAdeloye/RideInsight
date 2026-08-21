@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="drafts-page">
+
+    <div class="drafts-header">
+        <div>
+            <h2><i data-lucide="file-text"></i> Drafts</h2>
+            <p class="drafts-subtitle">Posts you saved for later</p>
+        </div>
+        <a class="btn btn-primary" href="/"><i data-lucide="pen-line"></i> New Post</a>
+    </div>
+
+    <div id="draftsList" class="drafts-list">
+        <p class="empty-state" style="padding:20px 0;">Loading…</p>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='drafts.js') }}"></script>
+{% endblock %}
