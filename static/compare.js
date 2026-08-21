@@ -405,8 +405,12 @@ async function compareCars(v1Override, v2Override) {
             ${similarities}
         </div>
         <div class="winner-box">
-            <h2>Recommendation</h2>
-            <button onclick="saveComparison()">Save Comparison</button>
+            <div class="winner-head">
+                <h2>Recommendation</h2>
+                <button class="save-comparison-btn" id="saveCompBtn" onclick="saveComparison()">
+                    <i data-lucide="bookmark"></i> Save Comparison
+                </button>
+            </div>
             ${getWinner(v1, v2, intent, type)}
         </div>
         ${getRisks(v1, v2, intent, type)}
@@ -1364,20 +1368,46 @@ async function saveComparison() {
     const car2   = getV2SearchText();
     const intent = document.getElementById("intent").value;
 
-    if (!car1 || !car2) { alert("Nothing to save — run a comparison first."); return; }
+    if (!car1 || !car2) { showCompareToast("Run a comparison first", true); return; }
+
+    const btn = document.getElementById("saveCompBtn");
+    if (btn) { btn.disabled = true; btn.classList.add("is-saving"); }
 
     const vehicle_type = document.getElementById("vehicleType")?.value || "car";
-    const res = await csrfFetch("/save_comparison", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ car1, car2, intent, vehicle_type })
-    });
+    let ok = false;
+    try {
+        const res = await csrfFetch("/save_comparison", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ car1, car2, intent, vehicle_type })
+        });
+        ok = res.ok;
+    } catch (e) { ok = false; }
 
-    if (res.ok) {
-        alert("Comparison saved!");
+    if (btn) btn.classList.remove("is-saving");
+
+    if (ok) {
+        if (btn) {
+            btn.classList.add("is-saved");
+            btn.innerHTML = `<i data-lucide="check"></i> Saved`;
+            if (window.refreshIcons) window.refreshIcons();
+        }
+        showCompareToast("Comparison saved — view it in Saved Comparisons");
     } else {
-        alert("Could not save — are you logged in?");
+        if (btn) btn.disabled = false;
+        showCompareToast("Could not save — are you logged in?", true);
     }
+}
+
+// Lightweight toast (replaces blocking alert dialogs)
+function showCompareToast(msg, isError = false) {
+    document.querySelectorAll(".compare-toast").forEach(t => t.remove());
+    const t = document.createElement("div");
+    t.className = "compare-toast" + (isError ? " toast-error" : "");
+    t.innerHTML = `<i data-lucide="${isError ? "alert-circle" : "check-circle"}"></i><span>${msg}</span>`;
+    document.body.appendChild(t);
+    if (window.refreshIcons) window.refreshIcons();
+    setTimeout(() => t.remove(), 3200);
 }
 
 function loadComparisonFromUrl() {
@@ -1466,31 +1496,3 @@ function getMotoWinner(m1, m2, intent) {
     if (s2 > s1) return `<strong>${n2}</strong> is the better choice for <strong>${formatIntent(intent)}</strong> because it offers:<ul>${r2.map(r=>`<li>${r}</li>`).join("")}</ul>`;
     return `Both motorcycles are evenly matched for <strong>${formatIntent(intent)}</strong> based on available specs.`;
 }
-// ─── Restore a saved comparison from URL params ───────────────────
-// /compare?car1=...&car2=...&intent=...&type=motorcycle
-(function restoreFromUrl() {
-    const p     = new URLSearchParams(window.location.search);
-    const car1  = p.get("car1");
-    const car2  = p.get("car2");
-    if (!car1 || !car2) return;
-
-    const intent = p.get("intent") || "daily";
-    const type   = p.get("type")   || "car";
-
-    const run = () => {
-        const typeSel   = document.getElementById("vehicleType");
-        const intentSel = document.getElementById("intent");
-        if (typeSel)   typeSel.value   = type;
-        if (intentSel) intentSel.value = intent;
-        // Show the right dropdown set for this vehicle type
-        if (typeof onTypeChange === "function") onTypeChange();
-        // compareCars accepts overrides, so we don't need the dropdowns populated
-        if (typeof compareCars === "function") compareCars(car1, car2);
-    };
-
-    if (document.readyState === "loading") {
-        document.addEventListener("DOMContentLoaded", run);
-    } else {
-        run();
-    }
-})();

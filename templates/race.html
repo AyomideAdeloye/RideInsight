@@ -103,12 +103,35 @@
                     </div>
                 </div>
 
-                <!-- Controls hint -->
+                <!-- Controls hint (desktop / keyboard) -->
                 <div class="race-controls-hint" id="raceControlsHint" style="display:none;">
                     <span><i data-lucide="arrow-up"></i> / W — Accelerate</span>
                     <span><i data-lucide="arrow-down"></i> / S — Brake</span>
                     <span id="steerHint" style="display:none;"><i data-lucide="move-horizontal"></i> / A D — Steer</span>
                     <span>Space — Nitro <i data-lucide="flame"></i></span>
+                </div>
+
+                <!-- Touch controls (mobile) -->
+                <div class="race-touch-controls" id="raceTouchControls" style="display:none;">
+                    <div class="rtc-left" id="rtcSteerGroup">
+                        <button class="rtc-btn rtc-steer" data-key="a" aria-label="Steer left">
+                            <i data-lucide="chevron-left"></i>
+                        </button>
+                        <button class="rtc-btn rtc-steer" data-key="d" aria-label="Steer right">
+                            <i data-lucide="chevron-right"></i>
+                        </button>
+                    </div>
+                    <div class="rtc-right">
+                        <button class="rtc-btn rtc-brake" data-key="s" aria-label="Brake">
+                            <i data-lucide="chevron-down"></i>
+                        </button>
+                        <button class="rtc-btn rtc-nitro" data-key=" " aria-label="Nitro">
+                            <i data-lucide="flame"></i>
+                        </button>
+                        <button class="rtc-btn rtc-gas" data-key="w" aria-label="Accelerate">
+                            <i data-lucide="chevron-up"></i>
+                        </button>
+                    </div>
                 </div>
             </div>
 

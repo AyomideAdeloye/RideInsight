@@ -678,6 +678,7 @@ async function finishRace(playerWon, stats) {
     document.getElementById("raceResults").style.display = "block";
     document.getElementById("raceHud").style.display     = "none";
     document.getElementById("raceControlsHint").style.display = "none";
+    setTouchControlsVisible(false);
     if (window.refreshIcons) window.refreshIcons();
 
     // Save result
@@ -852,6 +853,7 @@ function startRace() {
     document.getElementById("raceHud").style.display          = "flex";
     document.getElementById("raceControlsHint").style.display = "flex";
     document.getElementById("steerHint").style.display        = raceMode === "track" ? "inline" : "none";
+    setTouchControlsVisible(true);
 
     if (raceMode === "drag")  initDrag(playerBuild, opponentBuild);
     else                      initTrack(playerBuild, opponentBuild);
@@ -873,6 +875,7 @@ function resetRace() {
     document.getElementById("raceOverlay").style.display = "flex";
     document.getElementById("raceHud").style.display     = "none";
     document.getElementById("raceControlsHint").style.display = "none";
+    setTouchControlsVisible(false);
 }
 
 // ─── Leaderboard ──────────────────────────────────────────────────
@@ -925,3 +928,51 @@ document.addEventListener("DOMContentLoaded", () => {
     loadLeaderboard();
     switchMode("drag");
 });
+// ─── Touch controls (mobile) ──────────────────────────────────────
+// Feeds the same key map the keyboard handler uses, so race physics
+// needs no changes — a held button behaves exactly like a held key.
+function setKey(key, down) {
+    if (raceMode === "drag") drag.keys[key]  = down;
+    else                     track.keys[key] = down;
+}
+
+function initTouchControls() {
+    const wrap = document.getElementById("raceTouchControls");
+    if (!wrap) return;
+
+    wrap.querySelectorAll(".rtc-btn").forEach(btn => {
+        const key = btn.dataset.key;
+
+        const press = (e) => {
+            e.preventDefault();
+            if (!raceRunning) return;
+            setKey(key, true);
+            btn.classList.add("active");
+        };
+        const release = (e) => {
+            if (e) e.preventDefault();
+            setKey(key, false);
+            btn.classList.remove("active");
+        };
+
+        btn.addEventListener("touchstart", press,   { passive: false });
+        btn.addEventListener("touchend",   release, { passive: false });
+        btn.addEventListener("touchcancel", release, { passive: false });
+        // Mouse fallback so it also works in desktop device-emulation
+        btn.addEventListener("mousedown",  press);
+        btn.addEventListener("mouseup",    release);
+        btn.addEventListener("mouseleave", release);
+    });
+}
+
+// Show/hide touch pad alongside the keyboard hint
+function setTouchControlsVisible(visible) {
+    const wrap = document.getElementById("raceTouchControls");
+    if (!wrap) return;
+    wrap.style.display = visible ? "flex" : "none";
+    const steerGroup = document.getElementById("rtcSteerGroup");
+    // Steering only matters in track mode
+    if (steerGroup) steerGroup.style.visibility = (raceMode === "track") ? "visible" : "hidden";
+}
+
+document.addEventListener("DOMContentLoaded", initTouchControls);

@@ -1222,3 +1222,46 @@ if (document.getElementById("notifBadge")) {
     loadNotifications();
     setInterval(loadNotifications, 60000);
 }
+// ─── Mobile: relocate news + weekly challenge into the nav drawer ──
+// On phones the right sidebar would otherwise sit at the very bottom
+// of the feed. Move it to the top of the hamburger sidebar instead.
+(function moveWidgetsToSidebarOnMobile() {
+    const MOBILE_MAX = 900;
+    let holder = null;   // wrapper we create inside the drawer
+    let placed = false;
+
+    function apply() {
+        const aside   = document.querySelector(".right-sidebar");
+        const sidebar = document.getElementById("sidebar");
+        if (!aside || !sidebar) return;
+
+        const isMobile = window.innerWidth <= MOBILE_MAX;
+
+        if (isMobile && !placed) {
+            holder = document.createElement("div");
+            holder.className = "sidebar-widgets";
+            holder.appendChild(aside);
+            sidebar.insertBefore(holder, sidebar.firstChild);
+            placed = true;
+        } else if (!isMobile && placed) {
+            // Put it back in the home layout for desktop
+            const layout = document.querySelector(".home-layout");
+            if (layout) layout.appendChild(aside);
+            holder?.remove();
+            holder = null;
+            placed = false;
+        }
+    }
+
+    if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", apply);
+    } else {
+        apply();
+    }
+
+    let t;
+    window.addEventListener("resize", () => {
+        clearTimeout(t);
+        t = setTimeout(apply, 180);
+    });
+})();

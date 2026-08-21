@@ -64,7 +64,9 @@ async function loadSaved() {
             </h3>
             <div class="saved-card-actions">
                 <a class="btn btn-primary btn-sm" href="${url}">Open Comparison</a>
-                <button class="btn btn-ghost btn-sm btn-danger" onclick="deleteComparison(${comp.id})">Delete</button>
+                <button class="saved-delete-btn" onclick="deleteComparison(${comp.id})">
+                    <i data-lucide="trash-2"></i> Delete
+                </button>
             </div>
         </div>`;
     }).join("");
