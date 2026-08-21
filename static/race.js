@@ -256,17 +256,19 @@ function updateDrag(dt) {
     const maxVel = 0.5 + p.stats.hp / 600;
     const accelF = 0.008 + p.stats.hp / 80000;
 
-    if (accel && !p.finished) {
-        p.nitroActive = nitro;
+    // Nitro works on its own — no need to also hold accelerate
+    if (!p.finished) {
+        p.nitroActive = !!nitro;
         const boost = nitro ? 1.6 : 1.0;
-        p.vel = Math.min(maxVel * boost, p.vel + accelF * boost);
+
+        if (accel || nitro) {
+            p.vel = Math.min(maxVel * boost, p.vel + accelF * boost);
+        } else if (brake) {
+            p.vel = Math.max(0, p.vel - 0.015);
+        } else {
+            p.vel = Math.max(0, p.vel - 0.003); // coast / drag
+        }
         if (nitro) p.nitroLeft = Math.max(0, p.nitroLeft - dt * 2);
-    } else if (brake && !p.finished) {
-        p.vel = Math.max(0, p.vel - 0.015);
-        p.nitroActive = false;
-    } else if (!p.finished) {
-        p.vel = Math.max(0, p.vel - 0.003); // drag
-        p.nitroActive = false;
     }
 
     if (!p.finished) {
@@ -458,8 +460,16 @@ function updateTrack(dt) {
         const ahead = ((r.dist + 20) % track.circuitLen) / track.circuitLen;
         const p0 = getTrackPoint(t);
         const p1 = getTrackPoint(ahead);
-        const corner = Math.abs(p1.angle - p0.angle);
-        const inCorner = corner > 0.05;
+        // Normalize the angle delta to [-PI, PI] — without this the atan2 wrap
+        // point registered as a huge "corner" every lap
+        let dAng = p1.angle - p0.angle;
+        while (dAng >  Math.PI) dAng -= Math.PI * 2;
+        while (dAng < -Math.PI) dAng += Math.PI * 2;
+        const corner = Math.abs(dAng);
+        // The circuit is an ellipse, so it curves everywhere. The old 0.05
+        // threshold was true at every point, which made the AI permanently
+        // "in a corner" — it never accelerated and sat still on the line.
+        const inCorner = corner > 0.11;
 
         const maxVel   = inCorner
             ? (0.3 + r.stats.handling / 400)
@@ -472,9 +482,10 @@ function updateTrack(dt) {
             brake = keys["ArrowDown"] || keys["s"] || keys["S"];
             nitro = keys[" "] && r.nitroLeft > 0;
         } else {
-            // AI: brake in corners, full throttle on straight
-            accel = !inCorner;
-            brake = inCorner && r.vel > maxVel * 0.7;
+            // AI drives to its speed limit rather than toggling on "corner",
+            // so it always gets moving (maxVel already drops in corners).
+            accel = r.vel < maxVel * 0.98;
+            brake = r.vel > maxVel * 1.06;
             nitro = r.nitroLeft > 0 && !inCorner && Math.random() < 0.015;
         }
 
@@ -482,9 +493,10 @@ function updateTrack(dt) {
         const boost = r.nitroActive ? 1.5 : 1.0;
         if (r.nitroActive) r.nitroLeft = Math.max(0, r.nitroLeft - dt * 2);
 
-        if (accel)      r.vel = Math.min(maxVel * boost, r.vel + accelF * boost);
-        else if (brake) r.vel = Math.max(0, r.vel - 0.012 * (r.stats.braking / 50));
-        else            r.vel = Math.max(0, r.vel - 0.004);
+        // Nitro alone is enough to pull — no need to also hold accelerate
+        if (accel || r.nitroActive) r.vel = Math.min(maxVel * boost, r.vel + accelF * boost);
+        else if (brake)             r.vel = Math.max(0, r.vel - 0.012 * (r.stats.braking / 50));
+        else                        r.vel = Math.max(0, r.vel - 0.004);
 
         const prevDist = r.dist;
         r.dist += r.vel * dt * 60;

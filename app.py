@@ -1318,6 +1318,26 @@ def vehicle_image():
     headers = {"User-Agent": "RideInsight/1.0"}
     search_query = query or f"{year} {make} {model}".strip()
 
+    # Boat/motorcycle names collide with places and people on Wikipedia
+    # ("Malibu" -> Malibu Pier, "Yamaha" -> the corporation, etc).
+    # Anchor the search and reject obviously-wrong subjects.
+    TYPE_WORD = {"boat": "boat", "motorcycle": "motorcycle"}.get(vtype, "")
+    BAD_TITLE_WORDS = (
+        "pier", "beach", "city", "county", "california", "lake", "river",
+        "island", "bay", "town", "village", "school", "park", "band",
+        "album", "song", "film", "actor", "restaurant", "hotel", "street",
+    )
+
+    def title_is_plausible(title: str) -> bool:
+        """Reject Wikipedia hits that clearly aren't the vehicle."""
+        t = (title or "").lower()
+        if any(w in t for w in BAD_TITLE_WORDS):
+            return False
+        # Must at least mention the make
+        if make and make.lower().split()[0] not in t:
+            return False
+        return True
+
     # 1. Imagin.studio for cars (URL construction, no request needed)
     if vtype == "car" and make and model:
         # Normalize make for Imagin.studio
@@ -1341,9 +1361,12 @@ def vehicle_image():
     unsplash_key = os.getenv("UNSPLASH_ACCESS_KEY", "")
     if unsplash_key:
         try:
+            # Anchor with the vehicle type so "Malibu 21 VLX" doesn't
+            # return beach photos
+            unsplash_q = f"{search_query} {TYPE_WORD}".strip() if TYPE_WORD else search_query
             r = requests.get(
                 "https://api.unsplash.com/search/photos",
-                params={"query": search_query, "per_page": 3, "orientation": "landscape"},
+                params={"query": unsplash_q, "per_page": 3, "orientation": "landscape"},
                 headers={"Authorization": f"Client-ID {unsplash_key}"},
                 timeout=6
             )
@@ -1372,6 +1395,10 @@ def vehicle_image():
             )
             if r.status_code == 200:
                 data = r.json()
+                # For boats/motorcycles, verify the page is actually about
+                # the vehicle before trusting its image
+                if TYPE_WORD and not title_is_plausible(data.get("title", "")):
+                    continue
                 img = data.get("originalimage", {}).get("source", "") or \
                       data.get("thumbnail", {}).get("source", "")
                 if img and not img.endswith(".svg"):
@@ -1383,10 +1410,14 @@ def vehicle_image():
     try:
         r = requests.get(
             "https://en.wikipedia.org/w/api.php",
-            params={"action":"query","list":"search","srsearch":search_query,"srlimit":3,"format":"json"},
+            params={"action":"query","list":"search",
+                    "srsearch": f"{search_query} {TYPE_WORD}".strip(),
+                    "srlimit":3,"format":"json"},
             headers=headers, timeout=5
         )
         for result in r.json().get("query", {}).get("search", []):
+            if TYPE_WORD and not title_is_plausible(result.get("title", "")):
+                continue
             img_r = requests.get(
                 "https://en.wikipedia.org/w/api.php",
                 params={"action":"query","titles":result["title"],"prop":"pageimages",

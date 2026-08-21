@@ -6,6 +6,9 @@
 
         <!-- LEFT: Full-height sticky 3D viewer -->
         <div class="builder-visual-panel">
+            <div class="rotate-hint">
+                <i data-lucide="rotate-cw-square"></i> Rotate your phone for the full builder layout
+            </div>
             <div class="viewer-3d-wrap" id="viewer3dWrap">
                 <canvas id="carCanvas"></canvas>
                 <div id="modelLoadOverlay">
@@ -15,28 +18,30 @@
 
                 <!-- Which 3D model is being shown for the selected real car -->
                 <div id="modelMatchBanner" class="model-match-banner" style="display:none;"></div>
+            </div>
 
-                <!-- Bottom: color wheel + rotate controls -->
-                <div class="viewer-bottom-bar">
-                    <div class="viewer-paint-row">
-                        <span class="paint-label">COLOR</span>
-                        <canvas id="colorWheel" width="96" height="96"></canvas>
-                        <div class="paint-lightness-col">
-                            <input type="range" id="lightSlider" min="8" max="92" value="45"
-                                   oninput="onLightnessChange(this.value)" title="Darker ↔ Lighter">
-                            <div class="paint-preview-row">
-                                <span id="paintPreview" class="paint-preview"></span>
-                                <span class="paint-hint">drag wheel · slide for shade</span>
-                            </div>
+            <!-- Paint + rotate controls.
+                 Desktop: absolutely positioned over the canvas bottom.
+                 Mobile:  static, sits directly beneath the canvas. -->
+            <div class="viewer-bottom-bar">
+                <div class="viewer-paint-row">
+                    <span class="paint-label">COLOR</span>
+                    <canvas id="colorWheel" width="96" height="96"></canvas>
+                    <div class="paint-lightness-col">
+                        <input type="range" id="lightSlider" min="8" max="92" value="45"
+                               oninput="onLightnessChange(this.value)" title="Darker ↔ Lighter">
+                        <div class="paint-preview-row">
+                            <span id="paintPreview" class="paint-preview"></span>
+                            <span class="paint-hint">drag wheel · slide for shade</span>
                         </div>
                     </div>
-                    <div class="viewer-rotate-row">
-                        <button class="viewer-ctrl-btn" onclick="rotateLeft()"><i data-lucide="chevron-left"></i></button>
-                        <button class="viewer-ctrl-btn" id="autoRotateBtn" onclick="toggleAutoRotate()">
-                            <i data-lucide="rotate-cw"></i> Auto
-                        </button>
-                        <button class="viewer-ctrl-btn" onclick="rotateRight()"><i data-lucide="chevron-right"></i></button>
-                    </div>
+                </div>
+                <div class="viewer-rotate-row">
+                    <button class="viewer-ctrl-btn" onclick="rotateLeft()"><i data-lucide="chevron-left"></i></button>
+                    <button class="viewer-ctrl-btn" id="autoRotateBtn" onclick="toggleAutoRotate()">
+                        <i data-lucide="rotate-cw"></i> Auto
+                    </button>
+                    <button class="viewer-ctrl-btn" onclick="rotateRight()"><i data-lucide="chevron-right"></i></button>
                 </div>
             </div>
         </div>

@@ -5110,36 +5110,50 @@ html.dark-mode.scheme-blue   { --accent-light: #1e3a5f; }
     .post-detail-page { padding: 14px 10px; }
 
     /* ── Builder ── */
-    .builder-page { margin: 0 -16px -16px; }
-    .builder-visual-panel { height: auto; }
-    .viewer-3d-wrap { height: 62vw; min-height: 240px; }
+    /* No negative side margins — they pushed panel content off-screen
+       and clipped section labels like "BODY STYLE" */
+    .builder-page { margin: 0; overflow-x: hidden; }
+    .builder-visual-panel { height: auto; display: block; }
+    .viewer-3d-wrap { height: 60vw; min-height: 230px; position: relative; }
 
-    /* Paint + rotate controls move BELOW the canvas so they never cover the car */
+    /* Paint + rotate controls sit BELOW the canvas so nothing covers the car */
     .viewer-bottom-bar {
         position: static;
         background: var(--surface);
         border-top: 1px solid var(--border);
-        padding: 12px 14px;
+        border-bottom: 1px solid var(--border);
+        padding: 10px 12px;
         gap: 10px;
         flex-direction: row;
         align-items: center;
         justify-content: space-between;
         flex-wrap: wrap;
     }
-    .viewer-paint-row { gap: 10px; flex: 1; min-width: 0; }
-    #colorWheel { width: 52px; height: 52px; }
-    #lightSlider { width: 96px; }
-    .paint-lightness-col { gap: 6px; }
+    .viewer-paint-row { gap: 9px; flex: 1 1 auto; min-width: 0; }
+    #colorWheel { width: 50px; height: 50px; }
+    #lightSlider { width: 88px; }
+    .paint-lightness-col { gap: 5px; }
     .paint-label { min-width: 0; font-size: 9px; }
     .paint-hint { display: none; }
-    .viewer-ctrl-btn { padding: 6px 11px; font-size: 11px; }
-    .viewer-rotate-row { gap: 6px; }
-    .build-name-row { flex-wrap: wrap; }
+    .viewer-ctrl-btn { padding: 6px 10px; font-size: 11px; }
+    .viewer-rotate-row { gap: 5px; flex-shrink: 0; }
+
+    /* Right panel: keep text inside the viewport */
+    .builder-parts-panel { border-left: none; }
+    .parts-panel-header { padding: 16px 14px 12px; }
+    .builder-section-header { padding: 14px 14px; font-size: 13px; }
+    .builder-section-body { padding: 12px 14px; }
+    .builder-section-group-label { padding: 6px 14px 2px; font-size: 10px; }
+    .build-name-row { flex-wrap: wrap; padding: 12px 14px; }
     .build-name-input { flex: 1 1 100%; }
     .body-style-grid { grid-template-columns: 1fr; }
     .part-variants-row { gap: 6px; }
-    .part-variant-btn { min-width: 0; padding: 7px 6px; }
+    .part-variant-btn { min-width: 0; padding: 7px 5px; }
     .pv-label { font-size: 11px; }
+    .pv-price { font-size: 9px; }
+    .mod-row { gap: 8px; }
+    .mod-name { font-size: 12px; }
+    .summary-row { font-size: 13px; }
     .model-match-banner { font-size: 10px; padding: 6px 12px; top: 10px; }
 
     /* ── Garage ── */
@@ -5442,3 +5456,53 @@ html.dark-mode.scheme-blue   { --accent-light: #1e3a5f; }
     background: var(--bg);
 }
 .sidebar-widgets .trending-list { max-height: 320px; overflow-y: auto; }
+
+/* ─── Builder: landscape on phones/tablets ───────────────────────────
+   Rotating the device gives the desktop side-by-side layout so parts
+   are reachable without scrolling past the canvas.                    */
+@media (max-width: 1000px) and (orientation: landscape) {
+    .builder-page { margin: 0; overflow: hidden; }
+    .builder-layout {
+        grid-template-columns: 1fr minmax(240px, 42%);
+        height: calc(100vh - var(--navbar-h));
+        overflow: hidden;
+    }
+    .builder-visual-panel { height: 100%; display: flex; flex-direction: column; }
+    .viewer-3d-wrap { flex: 1; height: auto; min-height: 0; }
+
+    /* Overlay the controls again — vertical space is precious here */
+    .viewer-bottom-bar {
+        position: absolute;
+        bottom: 0; left: 0; right: 0;
+        background: linear-gradient(to top, rgba(168,173,181,0.96) 0%, rgba(168,173,181,0) 100%);
+        border: none;
+        padding: 28px 14px 10px;
+    }
+    .builder-parts-panel { overflow-y: auto; border-left: 1px solid var(--border); }
+    .parts-panel-header { padding: 12px 14px 8px; }
+    .parts-panel-header h2 { font-size: 16px; }
+    .parts-panel-header p  { font-size: 11px; }
+    .build-name-row { padding: 10px 14px; }
+    #colorWheel { width: 46px; height: 46px; }
+    #lightSlider { width: 80px; }
+    .body-style-grid { grid-template-columns: 1fr 1fr; }
+}
+
+/* Nudge users to rotate when the builder is cramped in portrait */
+.rotate-hint { display: none; }
+@media (max-width: 640px) and (orientation: portrait) {
+    .rotate-hint {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        margin: 0;
+        padding: 9px 14px;
+        background: var(--accent-light);
+        color: var(--accent);
+        font-size: 11.5px;
+        font-weight: 600;
+        border-bottom: 1px solid var(--border);
+    }
+    .rotate-hint i { width: 14px; height: 14px; }
+}
