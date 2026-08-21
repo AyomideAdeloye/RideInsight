@@ -4353,17 +4353,23 @@ html.dark-mode.scheme-blue   { --accent-light: #1e3a5f; }
 .profile-badge {
     display: inline-flex;
     align-items: center;
-    gap: 5px;
-    padding: 4px 10px;
+    gap: 4px;
+    padding: 3px 8px;
     border-radius: 999px;
     background: rgba(0,0,0,0.06);
-    border: 1.5px solid var(--badge-color);
+    border: 1px solid var(--badge-color);
     color: var(--badge-color);
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 600;
     cursor: default;
     position: relative;
     transition: transform 0.15s, box-shadow 0.15s;
+}
+.profile-badge .badge-icon {
+    width: auto; height: auto;
+    font-size: 11px; line-height: 1;
+    background: none; border: none; border-radius: 0;
+    display: inline;
 }
 .profile-badge:hover { box-shadow: 0 0 0 3px rgba(0,0,0,0.08); }
 .profile-badge:hover { transform: translateY(-1px); }
@@ -5540,7 +5546,8 @@ html.dark-mode.scheme-blue   { --accent-light: #1e3a5f; }
 }
 .badge-card:hover { box-shadow: var(--shadow-md); transform: translateY(-1px); }
 .badge-card.locked { opacity: 0.55; }
-.badge-icon {
+/* Scoped to .badge-card so it doesn't clobber the small profile badges */
+.badge-card .badge-icon {
     width: 52px; height: 52px; flex-shrink: 0;
     display: flex; align-items: center; justify-content: center;
     font-size: 26px; border-radius: 14px;
@@ -5548,7 +5555,7 @@ html.dark-mode.scheme-blue   { --accent-light: #1e3a5f; }
 }
 .badge-card.locked .badge-icon { filter: grayscale(1); }
 .badge-body { min-width: 0; }
-.badge-name { font-size: 15px; font-weight: 700; margin-bottom: 3px; }
+.badge-card .badge-name { font-size: 15px; font-weight: 700; margin-bottom: 3px; white-space: normal; }
 .badge-desc { font-size: 12.5px; color: var(--text-muted); line-height: 1.45; }
 .badge-date, .badge-locked-label {
     display: inline-flex; align-items: center; gap: 5px;
@@ -5624,12 +5631,16 @@ html.dark-mode.scheme-blue   { --accent-light: #1e3a5f; }
     display: flex; align-items: center; justify-content: center;
     border-radius: 10px; color: #fff;
 }
-.social-icon i { width: 18px; height: 18px; }
-.social-icon.ig  { background: linear-gradient(45deg, #f09433, #dc2743, #bc1888); }
-.social-icon.tt  { background: #111; }
-.social-icon.yt  { background: #ff0000; }
-.social-icon.x   { background: #111; }
-.social-icon.web { background: var(--accent); }
+.social-icon i, .social-icon svg { width: 18px; height: 18px; }
+
+/* Brand colors — shared by settings inputs and profile links */
+.social-instagram { background: linear-gradient(45deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%); }
+.social-tiktok    { background: #010101; }
+.social-youtube   { background: #ff0000; }
+.social-x         { background: #000; }
+.social-reddit    { background: #ff4500; }
+.social-facebook  { background: #1877f2; }
+.social-website   { background: var(--accent); }
 
 /* Profile social row */
 .profile-socials { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
@@ -5637,10 +5648,18 @@ html.dark-mode.scheme-blue   { --accent-light: #1e3a5f; }
     display: inline-flex; align-items: center; justify-content: center;
     width: 34px; height: 34px; border-radius: 10px;
     color: #fff; text-decoration: none;
-    transition: transform 0.12s, opacity 0.12s;
+    transition: transform 0.12s, box-shadow 0.12s;
 }
-.profile-social-link:hover { transform: translateY(-2px); opacity: 0.9; }
-.profile-social-link i { width: 17px; height: 17px; }
+.profile-social-link:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+.profile-social-link svg { width: 17px; height: 17px; }
+
+/* Saved posts in settings */
+.saved-post-title { font-size: 14px; font-weight: 700; margin: 6px 0 4px; }
+.saved-post-open {
+    display: inline-block; margin-top: 8px;
+    font-size: 12px; font-weight: 600; color: var(--accent); text-decoration: none;
+}
+.saved-post-open:hover { text-decoration: underline; }
 
 /* Settings nav: always-visible grid on mobile (no horizontal scrolling) */
 @media (max-width: 640px) {

@@ -165,8 +165,11 @@ async function loadSavedPosts() {
                     <strong>@${esc(p.username)}</strong>
                     <button class="unsave-btn" onclick="unsavePost(${p.id})" title="Remove from saved"><i data-lucide="trash-2"></i></button>
                 </div>
-                <p class="saved-post-content">${esc(p.content || "")}</p>
-                ${p.image ? `<img src="${p.image}" class="saved-post-image">` : ""}
+                ${p.title ? `<div class="saved-post-title">${esc(p.title)}</div>` : ""}
+                <p class="saved-post-content">${esc((p.body || "").slice(0, 220))}${(p.body || "").length > 220 ? "…" : ""}</p>
+                ${p.image   ? `<img src="${p.image}" class="saved-post-image">`   : ""}
+                ${p.gif_url ? `<img src="${p.gif_url}" class="saved-post-image">` : ""}
+                <a class="saved-post-open" href="/post/${p.id}">Open post →</a>
             </div>
         `).join("");
         if (window.refreshIcons) window.refreshIcons();
@@ -217,6 +220,8 @@ async function saveSocials() {
         tiktok:    document.getElementById("socialTiktok")?.value.trim()    || "",
         youtube:   document.getElementById("socialYoutube")?.value.trim()   || "",
         x:         document.getElementById("socialX")?.value.trim()         || "",
+        reddit:    document.getElementById("socialReddit")?.value.trim()    || "",
+        facebook:  document.getElementById("socialFacebook")?.value.trim()  || "",
         website:   document.getElementById("socialWebsite")?.value.trim()   || "",
     };
     try {

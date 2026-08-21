@@ -671,7 +671,7 @@ def init_db():
 
     # Migrate: social media links on profiles
     for col in ["social_instagram", "social_tiktok", "social_youtube",
-                "social_x", "social_website"]:
+                "social_x", "social_website", "social_reddit", "social_facebook"]:
         try:
             conn.execute(f"ALTER TABLE users ADD COLUMN {col} TEXT DEFAULT ''")
         except Exception:
@@ -1665,7 +1665,7 @@ def update_socials():
     if "user_id" not in session:
         return jsonify({"error": "Not logged in"}), 401
     d = request.json or {}
-    fields = ["instagram", "tiktok", "youtube", "x", "website"]
+    fields = ["instagram", "tiktok", "youtube", "x", "reddit", "facebook", "website"]
     vals = []
     for f in fields:
         v = sanitize(d.get(f, "")).strip()
@@ -1673,7 +1673,8 @@ def update_socials():
         vals.append(v[:200])
     conn = get_db_connection()
     conn.execute("""UPDATE users SET social_instagram=?, social_tiktok=?,
-                    social_youtube=?, social_x=?, social_website=? WHERE id=?""",
+                    social_youtube=?, social_x=?, social_reddit=?,
+                    social_facebook=?, social_website=? WHERE id=?""",
                  (*vals, session["user_id"]))
     conn.commit()
     conn.close()
@@ -3577,11 +3578,13 @@ def get_saved_posts():
     if "user_id" not in session:
         return jsonify([])
     conn  = get_db_connection()
+    # posts are keyed by username (not user_id) — joining on p.user_id
+    # matched nothing, so saved posts never appeared
     posts = conn.execute("""
-        SELECT p.*, u.username, u.avatar, sp.created_at as saved_at
+        SELECT p.*, u.avatar, sp.created_at as saved_at
         FROM saved_posts sp
         JOIN posts p ON p.id = sp.post_id
-        JOIN users u ON u.id = p.user_id
+        LEFT JOIN users u ON u.username = p.username COLLATE NOCASE
         WHERE sp.user_id = ?
         ORDER BY sp.id DESC
     """, (session["user_id"],)).fetchall()

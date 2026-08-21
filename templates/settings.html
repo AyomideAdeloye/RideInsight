@@ -160,35 +160,22 @@
                         Add your handles or full profile URLs. These show on your profile page.
                     </p>
 
+                    {% from "_social_icons.html" import social_svg %}
+                    {% set social_fields = [
+                        ('instagram', 'socialInstagram', '@yourhandle',  user.social_instagram),
+                        ('tiktok',    'socialTiktok',    '@yourhandle',  user.social_tiktok),
+                        ('youtube',   'socialYoutube',   '@yourchannel', user.social_youtube),
+                        ('x',         'socialX',         '@yourhandle',  user.social_x),
+                        ('reddit',    'socialReddit',    'u/yourname',   user.social_reddit),
+                        ('facebook',  'socialFacebook',  'your.profile', user.social_facebook),
+                        ('website',   'socialWebsite',   'yoursite.com', user.social_website),
+                    ] %}
+                    {% for key, field_id, ph, val in social_fields %}
                     <div class="social-input-row">
-                        <span class="social-icon ig"><i data-lucide="instagram"></i></span>
-                        <input type="text" id="socialInstagram" placeholder="@yourhandle"
-                               value="{{ user.social_instagram or '' }}">
+                        <span class="social-icon social-{{ key }}">{{ social_svg(key) }}</span>
+                        <input type="text" id="{{ field_id }}" placeholder="{{ ph }}" value="{{ val or '' }}">
                     </div>
-
-                    <div class="social-input-row">
-                        <span class="social-icon tt"><i data-lucide="music-2"></i></span>
-                        <input type="text" id="socialTiktok" placeholder="@yourhandle"
-                               value="{{ user.social_tiktok or '' }}">
-                    </div>
-
-                    <div class="social-input-row">
-                        <span class="social-icon yt"><i data-lucide="youtube"></i></span>
-                        <input type="text" id="socialYoutube" placeholder="@yourchannel"
-                               value="{{ user.social_youtube or '' }}">
-                    </div>
-
-                    <div class="social-input-row">
-                        <span class="social-icon x"><i data-lucide="at-sign"></i></span>
-                        <input type="text" id="socialX" placeholder="@yourhandle"
-                               value="{{ user.social_x or '' }}">
-                    </div>
-
-                    <div class="social-input-row">
-                        <span class="social-icon web"><i data-lucide="globe"></i></span>
-                        <input type="text" id="socialWebsite" placeholder="yoursite.com"
-                               value="{{ user.social_website or '' }}">
-                    </div>
+                    {% endfor %}
 
                     <button class="btn btn-primary" onclick="saveSocials()">Save Social Links</button>
                     <div class="settings-msg" id="socialsMsg"></div>
