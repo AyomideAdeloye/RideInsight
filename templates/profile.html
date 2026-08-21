@@ -100,7 +100,7 @@
         <button class="profile-tab" onclick="showProfileTab('garage', this)">Garage</button>
 
         <div class="profile-tab-menu-wrap">
-            <button class="profile-tab-dots" onclick="toggleProfileMenu(event)" aria-label="More options">
+            <button class="profile-tab-dots" onclick="toggleProfileTabMenu(event)" aria-label="More options">
                 <i data-lucide="more-horizontal"></i>
             </button>
             <div class="profile-tab-dropdown" id="profileTabMenu">
@@ -229,8 +229,11 @@
 
 {% block scripts %}
 <script>
-// Three-dot menu
-function toggleProfileMenu(e) {
+// Three-dot menu on the tab row.
+// NOTE: must NOT be called toggleProfileMenu() — that name belongs to the
+// nav avatar dropdown in script.js, and redefining it here broke the
+// avatar menu on this page.
+function toggleProfileTabMenu(e) {
     e.stopPropagation();
     document.getElementById('profileTabMenu').classList.toggle('open');
 }
