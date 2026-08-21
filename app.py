@@ -642,6 +642,12 @@ def init_db():
         except Exception:
             pass
 
+    # Migrate: remember vehicle type on saved comparisons (car/motorcycle/boat)
+    try:
+        conn.execute("ALTER TABLE comparisons ADD COLUMN vehicle_type TEXT DEFAULT 'car'")
+    except Exception:
+        pass
+
     # Migrate: add link to notifications (clickable notifications)
     try:
         conn.execute("ALTER TABLE notifications ADD COLUMN link TEXT DEFAULT ''")
@@ -1489,10 +1495,11 @@ def save_comparison():
     car1   = sanitize(data.get("car1", ""))
     car2   = sanitize(data.get("car2", ""))
     intent = sanitize(data.get("intent", ""))
+    vtype  = sanitize(data.get("vehicle_type", "car")) or "car"
     conn = get_db_connection()
     conn.execute(
-        "INSERT INTO comparisons (user_id, car1, car2, intent) VALUES (?,?,?,?)",
-        (session["user_id"], car1, car2, intent)
+        "INSERT INTO comparisons (user_id, car1, car2, intent, vehicle_type) VALUES (?,?,?,?,?)",
+        (session["user_id"], car1, car2, intent, vtype)
     )
     conn.commit()
     conn.close()
@@ -1513,6 +1520,21 @@ def get_comparisons():
     ).fetchall()
     conn.close()
     return jsonify([dict(r) for r in rows])
+
+@csrf.exempt
+@app.route("/delete_comparison/<int:comp_id>", methods=["POST"])
+def delete_comparison(comp_id):
+    if "user_id" not in session:
+        return jsonify({"error": "Not logged in"}), 401
+    conn = get_db_connection()
+    row = conn.execute("SELECT user_id FROM comparisons WHERE id=?", (comp_id,)).fetchone()
+    if not row or row["user_id"] != session["user_id"]:
+        conn.close()
+        return jsonify({"error": "Unauthorized"}), 403
+    conn.execute("DELETE FROM comparisons WHERE id=?", (comp_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({"message": "Deleted"})
 
 # Auth
 @app.route("/signup", methods=["GET", "POST"])

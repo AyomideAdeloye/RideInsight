@@ -99,17 +99,28 @@
 </nav>
 
 <aside class="left-sidebar hidden" id="sidebar">
-    <p onclick="window.location.href='/'"><i data-lucide="home"></i> Home</p>
-    <p onclick="window.location.href='/garage'"><i data-lucide="car"></i> My Garage</p>
-    <p onclick="window.location.href='/the_shop'"><i data-lucide="shopping-bag"></i> The Shop</p>
-    <p onclick="window.location.href='/clubs'"><i data-lucide="users"></i> Car Clubs</p>
-    <p onclick="window.location.href='/meets'"><i data-lucide="calendar-days"></i> Car Meets</p>
-    <p onclick="window.location.href='/compare'"><i data-lucide="scale"></i> Compare Vehicles</p>
-    <p onclick="window.location.href='/search'"><i data-lucide="compass"></i> Explore</p>
-    <p onclick="window.location.href='/saved'"><i data-lucide="bookmark"></i> Saved Comparisons</p>
-    <p onclick="window.location.href='/race'"><i data-lucide="flag"></i> Race Mode</p>
-    <p onclick="window.location.href='/builder'"><i data-lucide="wrench"></i> Build Custom Vehicle</p>
-    <p onclick="window.location.href='/leaderboard'"><i data-lucide="trophy"></i> Leaderboard</p>
+    <div class="sidebar-group">
+        <div class="sidebar-group-label">Garage</div>
+        <p onclick="window.location.href='/garage'"><i data-lucide="car"></i> My Garage</p>
+        <p onclick="window.location.href='/search'"><i data-lucide="scan-line"></i> Scanner</p>
+        <p onclick="window.location.href='/compare'"><i data-lucide="scale"></i> Compare</p>
+        <p onclick="window.location.href='/saved'"><i data-lucide="bookmark"></i> Saved Comparisons</p>
+    </div>
+
+    <div class="sidebar-group">
+        <div class="sidebar-group-label">Community</div>
+        <p onclick="window.location.href='/'"><i data-lucide="home"></i> Feed</p>
+        <p onclick="window.location.href='/clubs'"><i data-lucide="users"></i> Clubs</p>
+        <p onclick="window.location.href='/meets'"><i data-lucide="calendar-days"></i> Meets</p>
+        <p onclick="window.location.href='/leaderboard'"><i data-lucide="trophy"></i> Leaderboards</p>
+    </div>
+
+    <div class="sidebar-group">
+        <div class="sidebar-group-label">Build</div>
+        <p onclick="window.location.href='/builder'"><i data-lucide="wrench"></i> Custom Vehicle</p>
+        <p onclick="window.location.href='/race'"><i data-lucide="flag"></i> Race Mode</p>
+        <p onclick="window.location.href='/the_shop'"><i data-lucide="shopping-bag"></i> Shop</p>
+    </div>
 </aside>
 
 {% block content %}{% endblock %}
