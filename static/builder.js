@@ -309,21 +309,44 @@ function isWheelOrInterior(name) {
 }
 
 // Per-part-type material presets applied on load
+// ORDER MATTERS: the most specific patterns must come first, or e.g.
+// "Taillight" gets caught by the generic /light/ rule and renders white.
 function styleForPart(name) {
+    if (!name) return null;
+
     if (/Glass|Window|Windshield/i.test(name))
-        return { color: 0x11161c, roughness: 0.05, metalness: 0.1, opacity: 0.75, transparent: true };
-    if (/Headlight|Lights?|Lamp/i.test(name))
-        return { color: 0xdfe8f2, roughness: 0.08, metalness: 0.2 };
-    if (/Taillight/i.test(name))
+        return { color: 0x0d1218, roughness: 0.04, metalness: 0.1, opacity: 0.72, transparent: true };
+
+    // Rear / brake / tail lamps — red lenses
+    if (/Tail|Rear.*(Light|Lamp)|Brake.*(Light|Lamp)/i.test(name))
         return { color: 0x8c1220, roughness: 0.15, metalness: 0.2 };
-    if (/Grille/i.test(name))
+
+    // Turn signals / indicators — amber
+    if (/Turn|Signal|Indicator|Blinker|Rot_(Left|Right)/i.test(name))
+        return { color: 0xd98324, roughness: 0.15, metalness: 0.2 };
+
+    // Front / head lamps — near-white lenses
+    if (/Head.*(Light|Lamp)|Front.*(Light|Lamp)|Fog|Lights?$|Lamp/i.test(name))
+        return { color: 0xdfe8f2, roughness: 0.06, metalness: 0.2 };
+
+    if (/Grille|Grill/i.test(name))
         return { color: 0x1c1f24, roughness: 0.45, metalness: 0.6 };
-    if (/Chrome|Trim|Emblem|Badge|Mirror/i.test(name))
+
+    if (/Chrome|Mirror|Emblem|Badge/i.test(name))
         return { color: 0xc9ced6, roughness: 0.12, metalness: 0.95 };
-    if (/SM_Wheel/i.test(name))
-        return { color: 0x2a2d31, roughness: 0.8, metalness: 0.1 };
-    if (/Interior/i.test(name))
+
+    // Wheels / rims / tires — bare "Wheel" too, not just SM_Wheel
+    if (/Wheel|Rim|Tire|Tyre|Brake/i.test(name))
+        return { color: 0x26292e, roughness: 0.55, metalness: 0.45 };
+
+    if (/Interior|Seat|Dash/i.test(name))
         return { color: 0x23262b, roughness: 0.85, metalness: 0.05 };
+
+    // Catch-all body detail (trim, plastics, badges bundled together).
+    // Matches BodyDet / Body_Detail / _det etc.
+    if (/det(ail)?s?$|detail|trim|plastic|rubber/i.test(name))
+        return { color: 0x2b2f35, roughness: 0.7, metalness: 0.15 };
+
     return null;
 }
 
@@ -713,7 +736,7 @@ const NO_PAINT_MESHES = new Set([
 // Materials that keep their own look instead of taking body paint.
 // "_det"/"detail" covers packs that put tires, grille, trim and badges into a
 // single "BodyDetail" material (e.g. M_Car15_BodyDet on the modern sedan).
-const NO_PAINT_MATERIAL = /glass|light|lamp|head|tail|chrome|mirror|wiper|trim|rubber|tire|tyre|interior|grill|window|windshield|lens|emissive|metal_dark|logo|badge|plate|_det|detail|wheel|rim|brake/i;
+const NO_PAINT_MATERIAL = /glass|light|lamp|head|tail|chrome|mirror|wiper|trim|rubber|tire|tyre|interior|grill|window|windshield|lens|emissive|metal_dark|logo|badge|plate|det(ail)?s?$|detail|wheel|rim|brake/i;
 
 function applyPaint(hex) {
     currentPaintHex = hex;
@@ -759,17 +782,23 @@ function prepMaterials() {
         mats.forEach(mat => {
             if (!mat) return;
             if (mat.name) matNames.add(mat.name);
-            // Leave lights/glass/chrome/trim untouched
-            if (mat.name && NO_PAINT_MATERIAL.test(mat.name)) return;
-            const preset = styleForPart(rivas);
+
+            // Style presets apply to EVERY part, including no-paint ones.
+            // (NO_PAINT_MATERIAL only means "don't take body colour" — it must
+            // not skip styling, or untextured models render everything white.)
+            // Match on the material name first, then fall back to the mesh name,
+            // since bought models name materials better than objects.
+            const preset = styleForPart(mat.name || "") || styleForPart(rivas);
+
             if (preset) {
                 if (preset.color !== undefined) mat.color.set(preset.color);
                 if (preset.roughness !== undefined) mat.roughness = preset.roughness;
                 if (preset.metalness !== undefined) mat.metalness = preset.metalness;
                 if (preset.transparent) { mat.transparent = true; mat.opacity = preset.opacity; }
-            } else if (isWheelOrInterior(rivas)) {
-                mat.roughness = 0.8;
-                mat.metalness = 0.1;
+            } else if (mat.name && NO_PAINT_MATERIAL.test(mat.name)) {
+                // Unknown non-paint part (trim, badges…) — just make it neutral
+                mat.roughness = 0.5;
+                mat.metalness = 0.3;
             } else {
                 // Lower metalness = truer, richer paint color
                 mat.roughness = 0.35;
