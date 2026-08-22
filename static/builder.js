@@ -114,6 +114,13 @@ const VEHICLES = {
         glb:        "/static/models/musclecar.glb",
         categories: MUSCLECAR_CATEGORIES,
     },
+    sedan_modern: {
+        label:      "Modern Sedan",
+        sub:        "Midsize · 4-door",
+        glb:        "/static/models/sedan_modern.glb",
+        categories: [],          // no swappable parts cut yet
+        rotationY:  Math.PI,     // flip to 0 if it faces away from camera
+    },
     mazda6_gj: {
         label:      "Mazda 6",
         sub:        "GJ · 2014–2018",
@@ -132,6 +139,39 @@ const MODEL_MATCHERS = [
     // ── Exact models (in-house, RI-VAS compliant) ──
     { make: "mazda", model: "6", modelExact: true, years: [2014, 2018], vehicle: "mazda6_gj", exact: true },
     { make: "mazda", model: "mazda6", modelExact: true, years: [2014, 2018], vehicle: "mazda6_gj", exact: true },
+
+    // ── Modern sedan archetype — the most-driven body style ──
+    { make: "honda",      model: "accord",   vehicle: "sedan_modern" },
+    { make: "honda",      model: "civic",    vehicle: "sedan_modern" },
+    { make: "toyota",     model: "camry",    vehicle: "sedan_modern" },
+    { make: "toyota",     model: "corolla",  vehicle: "sedan_modern" },
+    { make: "nissan",     model: "altima",   vehicle: "sedan_modern" },
+    { make: "nissan",     model: "sentra",   vehicle: "sedan_modern" },
+    { make: "nissan",     model: "maxima",   vehicle: "sedan_modern" },
+    { make: "hyundai",    model: "sonata",   vehicle: "sedan_modern" },
+    { make: "hyundai",    model: "elantra",  vehicle: "sedan_modern" },
+    { make: "kia",        model: "optima",   vehicle: "sedan_modern" },
+    { make: "kia",        model: "k5",       vehicle: "sedan_modern" },
+    { make: "kia",        model: "forte",    vehicle: "sedan_modern" },
+    { make: "mazda",      model: "6",        modelExact: true, vehicle: "sedan_modern" },
+    { make: "mazda",      model: "3",        modelExact: true, vehicle: "sedan_modern" },
+    { make: "subaru",     model: "legacy",   vehicle: "sedan_modern" },
+    { make: "subaru",     model: "impreza",  vehicle: "sedan_modern" },
+    { make: "volkswagen", model: "passat",   vehicle: "sedan_modern" },
+    { make: "volkswagen", model: "jetta",    vehicle: "sedan_modern" },
+    { make: "chevrolet",  model: "malibu",   vehicle: "sedan_modern" },
+    { make: "chevrolet",  model: "impala",   vehicle: "sedan_modern" },
+    { make: "chevrolet",  model: "cruze",    vehicle: "sedan_modern" },
+    { make: "ford",       model: "fusion",   vehicle: "sedan_modern" },
+    { make: "ford",       model: "taurus",   vehicle: "sedan_modern" },
+    { make: "acura",      model: "tlx",      vehicle: "sedan_modern" },
+    { make: "lexus",      model: "es",       modelExact: true, vehicle: "sedan_modern" },
+    { make: "bmw",        model: "3 series", vehicle: "sedan_modern" },
+    { make: "bmw",        model: "5 series", vehicle: "sedan_modern" },
+    { make: "mercedes",   model: "c-class",  vehicle: "sedan_modern" },
+    { make: "mercedes",   model: "e-class",  vehicle: "sedan_modern" },
+    { make: "audi",       model: "a4",       vehicle: "sedan_modern" },
+    { make: "audi",       model: "a6",       vehicle: "sedan_modern" },
 
     // Archetype fallbacks — muscle/pony/performance RWD cars → muscle car body
     { make: "ford",      model: "mustang",    vehicle: "musclecar" },
@@ -158,7 +198,8 @@ function matchVehicleModel(make, model, year) {
         if (rule.years && (yr < rule.years[0] || yr > rule.years[1])) continue;
         return { key: rule.vehicle, exact: !!rule.exact };
     }
-    return { key: "musclecar", exact: false };   // default body for now
+    // Default: a modern sedan is the closest match for most unknown cars
+    return { key: "sedan_modern", exact: false };
 }
 
 function updateModelMatchBanner(make, model, exact) {
@@ -669,7 +710,10 @@ const NO_PAINT_MESHES = new Set([
 ]);
 
 // Material names that must keep their original look (not body paint)
-const NO_PAINT_MATERIAL = /glass|light|lamp|head|tail|chrome|mirror|wiper|trim|rubber|tire|tyre|interior|grill|window|windshield|lens|emissive|metal_dark|logo|badge|plate/i;
+// Materials that keep their own look instead of taking body paint.
+// "_det"/"detail" covers packs that put tires, grille, trim and badges into a
+// single "BodyDetail" material (e.g. M_Car15_BodyDet on the modern sedan).
+const NO_PAINT_MATERIAL = /glass|light|lamp|head|tail|chrome|mirror|wiper|trim|rubber|tire|tyre|interior|grill|window|windshield|lens|emissive|metal_dark|logo|badge|plate|_det|detail|wheel|rim|brake/i;
 
 function applyPaint(hex) {
     currentPaintHex = hex;
@@ -841,6 +885,23 @@ function initColorWheel() {
 function buildPartSelectorUI() {
     const container = document.getElementById("categorySections");
     if (!container) return;
+
+    // Nothing to show if this body has no swappable parts cut yet
+    if (!PART_CATEGORIES.length) {
+        const note = document.createElement("div");
+        note.className = "builder-section-group-label";
+        note.innerHTML = `<i data-lucide="paintbrush"></i> Visual Customization`;
+        container.appendChild(note);
+        const msg = document.createElement("div");
+        msg.className = "builder-section";
+        msg.innerHTML = `<div class="builder-section-body">
+            <p class="empty-state" style="font-size:12.5px;padding:4px 0;">
+                Body kit options for this vehicle are coming soon — paint and
+                performance upgrades are available now.
+            </p></div>`;
+        container.appendChild(msg);
+        return;
+    }
 
     // Visual customization header
     const header = document.createElement("div");
