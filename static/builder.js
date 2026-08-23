@@ -335,6 +335,10 @@ function styleForPart(name) {
     if (/Chrome|Mirror|Emblem|Badge/i.test(name))
         return { color: 0xc9ced6, roughness: 0.12, metalness: 0.95 };
 
+    // Exhaust tips — brushed steel
+    if (/Exhaust|Muffler|Tailpipe|Pipe/i.test(name))
+        return { color: 0x9aa0a8, roughness: 0.3, metalness: 0.9 };
+
     // Wheels / rims / tires — bare "Wheel" too, not just SM_Wheel
     if (/Wheel|Rim|Tire|Tyre|Brake/i.test(name))
         return { color: 0x26292e, roughness: 0.55, metalness: 0.45 };
@@ -764,12 +768,12 @@ function prepMaterials() {
     if (!carModel) return;
     const matNames = new Set();
 
-    // Wheels/interior often SHARE one material with the body (common in AI exports).
-    // Give them their own copy so body paint doesn't tint them.
+    // Give every mesh its OWN material instance.
+    // Blender often exports a whole car sharing one "DefaultMaterial"; without
+    // cloning, painting the body would also tint glass, lights and wheels.
+    // 10-20 extra materials per car is negligible at this scale.
     carModel.traverse(node => {
         if (!node.isMesh || !node.material) return;
-        const rivas = node.userData.rivasName || effectiveName(node);
-        if (!isWheelOrInterior(rivas)) return;
         node.material = Array.isArray(node.material)
             ? node.material.map(m => m && m.clone())
             : node.material.clone();
