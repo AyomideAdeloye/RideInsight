@@ -321,7 +321,11 @@ let currentTint    = "medium";     // default hides empty cabins
 let currentTintHex = "#0d1218";
 
 function isGlassPart(name) {
-    return /Glass|Window|Windshield/i.test(name || "");
+    const n = name || "";
+    // Lights are often modelled as glass/lens material — never tint them,
+    // or changing window tint recolours the headlights and taillights.
+    if (/Light|Lamp|Lens|Head|Tail|Signal|Turn|Indicator|Fog|Rot_/i.test(n)) return false;
+    return /Glass|Window|Windshield|Windscreen/i.test(n);
 }
 
 function applyGlassTint(key, colorHex) {
@@ -479,7 +483,7 @@ function matchesVariant(meshName, variantName) {
 
 // Blender/GLTF sometimes puts the RI-VAS name on the parent node while the
 // mesh itself keeps a UUID name. Walk up to find the meaningful name.
-const RIVAS_NAME_RE = /(SM_Wheel|Wheel_|Tire_|Tyre_|Brake_|Caliper|Rotor|Interior|Body|Hood_|FrontBumper_|RearBumper_|Fender_|Spoiler_|Exhaust|RunningBoard_|SKM_|Glass|Lights|Headlight|Taillight|Grille|Chrome|Trim)/i;
+const RIVAS_NAME_RE = /(SM_Wheel|Wheel_|Tire_|Tyre_|Brake_|Caliper|Rotor|Interior|Body|Hood_|FrontBumper_|RearBumper_|Fender_|Spoiler_|Exhaust|RunningBoard_|SKM_|Glass|Lights|Headlight|Taillight|Grille|Chrome|Trim|Pillar|Frit)/i;
 function effectiveName(node) {
     let n = node;
     for (let i = 0; i < 4 && n; i++) {
@@ -523,8 +527,19 @@ function isWheelOrInterior(name) {
 function styleForPart(name) {
     if (!name) return null;
 
-    if (/Glass|Window|Windshield/i.test(name))
+    // Window glass only — "GlassHeadlight"/"GlassTaillight" must fall through
+    // to the lamp rules below, not be treated as a window.
+    if (/Glass|Window|Windshield|Windscreen/i.test(name)
+        && !/Light|Lamp|Head|Tail|Signal|Turn|Fog|Bulb|Trim|Moulding|Molding|Frame|Surround/i.test(name))
         return { color: 0x0d1218, roughness: 0.04, metalness: 0.1, opacity: 0.72, transparent: true };
+
+    // Bulbs named by colour (e.g. Car_LightBulbRed on the muscle car)
+    if (/Bulb.*Red|Red.*Bulb/i.test(name))
+        return { color: 0xa8202c, roughness: 0.2, metalness: 0.1 };
+    if (/Bulb.*(Yellow|Amber)|(Yellow|Amber).*Bulb/i.test(name))
+        return { color: 0xd9a324, roughness: 0.2, metalness: 0.1 };
+    if (/Bulb/i.test(name))
+        return { color: 0xf2f4f7, roughness: 0.12, metalness: 0.1 };
 
     // Rear / brake / tail lamps — red lenses
     if (/Tail|Rear.*(Light|Lamp)|Brake.*(Light|Lamp)/i.test(name))
@@ -541,6 +556,20 @@ function styleForPart(name) {
     if (/Grille|Grill/i.test(name))
         return { color: 0x1c1f24, roughness: 0.45, metalness: 0.6 };
 
+    // B-pillar / A-pillar covers — gloss black on nearly every modern car.
+    // This single detail is what makes side glass read as one continuous panel.
+    if (/Pillar/i.test(name))
+        return { color: 0x0a0c0f, roughness: 0.12, metalness: 0.3, env: 0.9 };
+
+    // Frit band — the matte ceramic dot-matrix border printed on glass edges
+    if (/Frit|GlassBorder|GlassEdge/i.test(name))
+        return { color: 0x0b0d10, roughness: 0.85, metalness: 0.0, env: 0.15 };
+
+    // Blackout window surround / body moulding — checked before chrome so
+    // "Trim" never falls through to the polished-metal rule.
+    if (/Trim|Moulding|Molding|Blackout|Beltline/i.test(name))
+        return { color: 0x15181c, roughness: 0.55, metalness: 0.25, env: 0.4 };
+
     if (/Chrome|Mirror|Emblem|Badge/i.test(name))
         return { color: 0xc9ced6, roughness: 0.12, metalness: 0.95 };
 
@@ -548,9 +577,11 @@ function styleForPart(name) {
     if (/Exhaust|Muffler|Tailpipe|Pipe/i.test(name))
         return { color: 0x9aa0a8, roughness: 0.3, metalness: 0.9 };
 
-    // Tires — flat black rubber (checked before rims so it wins)
+    // Tires — real rubber is near-black, fully matte and reflects almost
+    // nothing. Killing envMapIntensity is what stops it looking like grey
+    // plastic under the studio lights.
     if (/Tire|Tyre|Rubber/i.test(name))
-        return { color: 0x14161a, roughness: 0.92, metalness: 0.0 };
+        return { color: 0x08090b, roughness: 1.0, metalness: 0.0, env: 0.08 };
 
     // Brake calipers / rotors — swappable big-brake kits
     if (/Caliper/i.test(name))
@@ -1013,12 +1044,16 @@ function applyPaint(hex) {
     const color = new THREE.Color(hex).convertSRGBToLinear();
     carModel.traverse(node => {
         if (!node.isMesh) return;
-        if (isWheelOrInterior(node.userData.rivasName || effectiveName(node))) return;
+        const rivas = node.userData.rivasName || effectiveName(node);
+        if (isWheelOrInterior(rivas)) return;
         const mats = Array.isArray(node.material) ? node.material : [node.material];
         mats.forEach(mat => {
             if (!mat || !mat.color) return;
             if (mat.transparent && mat.opacity < 0.3) return;
             if (mat.name && NO_PAINT_MATERIAL.test(mat.name)) return;   // keep lights/glass/trim
+            // Anything with a style preset (pillars, frit, grille, lights…)
+            // is NOT a paintable panel — this used to overwrite their colours.
+            if (styleForPart(mat.name || "") || styleForPart(rivas)) return;
             mat.color.copy(color);
 
             // Apply the selected finish to painted panels
@@ -1079,6 +1114,8 @@ function prepMaterials() {
                 if (preset.color !== undefined) mat.color.set(preset.color);
                 if (preset.roughness !== undefined) mat.roughness = preset.roughness;
                 if (preset.metalness !== undefined) mat.metalness = preset.metalness;
+                if (preset.env !== undefined && mat.envMapIntensity !== undefined)
+                    mat.envMapIntensity = preset.env;
                 if (preset.transparent) { mat.transparent = true; mat.opacity = preset.opacity; }
             } else if (mat.name && NO_PAINT_MATERIAL.test(mat.name)) {
                 // Unknown non-paint part (trim, badges…) — just make it neutral
