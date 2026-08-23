@@ -257,6 +257,82 @@ const PAINT_COLORS = [
 
 let currentPaintHex = "#1a1a1a";
 
+// ── Window tint ────────────────────────────────────────────────────────────
+// Doubles as a way to hide empty cabins on models with no interior mesh.
+const TINT_LEVELS = [
+    { key: "clear",   label: "Clear",   sub: "Factory",  opacity: 0.28, color: 0x2a3a4a, price: 0 },
+    { key: "light",   label: "Light",   sub: "50% VLT",  opacity: 0.55, color: 0x151d26, price: 150 },
+    { key: "medium",  label: "Medium",  sub: "35% VLT",  opacity: 0.74, color: 0x0e141a, price: 200 },
+    { key: "dark",    label: "Dark",    sub: "20% VLT",  opacity: 0.88, color: 0x080c10, price: 250 },
+    { key: "limo",    label: "Limo",    sub: "5% VLT",   opacity: 0.97, color: 0x04070a, price: 300 },
+];
+let currentTint = "medium";   // default hides empty cabins
+
+function isGlassPart(name) {
+    return /Glass|Window|Windshield/i.test(name || "");
+}
+
+function applyGlassTint(key) {
+    const level = TINT_LEVELS.find(t => t.key === key) || TINT_LEVELS[2];
+    currentTint = level.key;
+    if (carModel) {
+        carModel.traverse(node => {
+            if (!node.isMesh) return;
+            const rivas = node.userData.rivasName || effectiveName(node);
+            const isGlass = isGlassPart(rivas) || isGlassPart(
+                (Array.isArray(node.material) ? node.material[0] : node.material)?.name
+            );
+            if (!isGlass) return;
+            const mats = Array.isArray(node.material) ? node.material : [node.material];
+            mats.forEach(mat => {
+                if (!mat || !mat.color) return;
+                mat.color.set(level.color);
+                mat.transparent = true;
+                mat.opacity     = level.opacity;
+                mat.roughness   = 0.04;
+                mat.metalness   = 0.1;
+                mat.depthWrite  = level.opacity > 0.92;  // solid enough to occlude
+                mat.needsUpdate = true;
+            });
+        });
+    }
+    // Update button states
+    document.querySelectorAll(".tint-btn").forEach(btn => {
+        btn.classList.toggle("active", btn.dataset.tint === level.key);
+    });
+    updateBuildSummary();
+}
+
+function buildTintUI() {
+    const container = document.getElementById("categorySections");
+    if (!container) return;
+
+    const header = document.createElement("div");
+    header.className = "builder-section-group-label";
+    header.innerHTML = `<i data-lucide="sun"></i> Window Tint`;
+    container.appendChild(header);
+
+    const section = document.createElement("div");
+    section.className = "builder-section";
+    section.innerHTML = `
+        <div class="builder-section-body">
+            <div class="tint-row">
+                ${TINT_LEVELS.map(t => `
+                    <button class="tint-btn ${t.key === currentTint ? "active" : ""}"
+                            data-tint="${t.key}"
+                            onclick="applyGlassTint('${t.key}')"
+                            title="${t.sub}">
+                        <span class="tint-swatch" style="--tint:rgba(10,14,20,${t.opacity});"></span>
+                        <span class="tint-label">${t.label}</span>
+                        <span class="tint-sub">${t.price > 0 ? "+$" + t.price : t.sub}</span>
+                    </button>
+                `).join("")}
+            </div>
+        </div>
+    `;
+    container.appendChild(section);
+}
+
 // ── Three.js state ─────────────────────────────────────────────────────────
 let renderer, scene, camera, controls;
 let carModel = null;
@@ -602,8 +678,9 @@ function loadModel() {
             controls.maxDistance = 16;
             controls.update();
 
-            // Apply default paint
+            // Apply default paint + tint
             applyPaint(currentPaintHex);
+            applyGlassTint(currentTint);
 
             if (overlay) overlay.style.display = "none";
             if (window.refreshIcons) window.refreshIcons();
@@ -647,6 +724,7 @@ function rebuildCustomizationUI() {
     if (container) container.innerHTML = "";
     buildBodyStyleUI();
     buildPartSelectorUI();
+    buildTintUI();
     buildPerfModsUI();
     if (window.refreshIcons) window.refreshIcons();
 }
@@ -1173,6 +1251,13 @@ function updateBuildSummary() {
         }
     });
 
+    // Window tint
+    const tint = TINT_LEVELS.find(t => t.key === currentTint);
+    if (tint && tint.price > 0) {
+        visualTotal += tint.price;
+        items.push({ name: `Window Tint: ${tint.label} (${tint.sub})`, cost: tint.price });
+    }
+
     // Performance mods
     Object.values(perfModsSelected).forEach(set => {
         set.forEach(modName => {
@@ -1227,6 +1312,10 @@ async function saveBuild() {
     });
     // Record which body this build uses
     parts.push({ category: "vehicle", name: currentVehicleKey, cost: 0, effect: VEHICLES[currentVehicleKey].label, icon: "" });
+    // Window tint
+    const tintLevel = TINT_LEVELS.find(t => t.key === currentTint);
+    parts.push({ category: "tint", name: currentTint, cost: tintLevel?.price || 0,
+                 effect: tintLevel ? `${tintLevel.label} (${tintLevel.sub})` : "", icon: "" });
 
     const payload = {
         name,
@@ -1313,6 +1402,8 @@ async function loadBuild(id) {
             if (p.category && p.category.startsWith("visual:")) {
                 const cat = p.category.slice(7);
                 swapPart(cat, p.name);
+            } else if (p.category === "tint") {
+                applyGlassTint(p.name);
             } else if (perfModsSelected[p.category]) {
                 toggleMod(p.category, p.name, p.cost);
             }
@@ -1348,6 +1439,7 @@ function clearBuild() {
     const slider = document.getElementById("lightSlider");
     if (slider) slider.value = 45;
     paintFromWheel();
+    applyGlassTint("medium");
     updateBuildSummary();
 }
 

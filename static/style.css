@@ -5687,3 +5687,58 @@ html.dark-mode.scheme-blue   { --accent-light: #1e3a5f; }
     .draft-actions .btn, .draft-actions .saved-delete-btn { flex: 1; justify-content: center; }
     .drafts-header .btn { width: 100%; }
 }
+
+/* ─── Builder: window tint picker ────────────────────────────────── */
+.tint-row {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 6px;
+}
+.tint-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 8px 4px;
+    background: #0f172a;
+    border: 1.5px solid #1e293b;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+}
+.tint-btn:hover  { border-color: #334155; background: #1e293b; }
+.tint-btn.active { border-color: var(--accent); background: rgba(37,99,235,0.12); }
+
+.tint-swatch {
+    width: 26px;
+    height: 18px;
+    border-radius: 3px;
+    border: 1px solid rgba(255,255,255,0.25);
+    /* checker pattern shows through so opacity is visible */
+    background-image:
+        linear-gradient(45deg, #667 25%, transparent 25%),
+        linear-gradient(-45deg, #667 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #667 75%),
+        linear-gradient(-45deg, transparent 75%, #667 75%);
+    background-size: 6px 6px;
+    background-position: 0 0, 0 3px, 3px -3px, -3px 0;
+    position: relative;
+    overflow: hidden;
+}
+.tint-swatch::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: var(--tint, transparent);
+}
+.tint-label { font-size: 10.5px; font-weight: 700; color: #cbd5e1; }
+.tint-sub   { font-size: 9px; color: #94a3b8; }
+.tint-btn.active .tint-label { color: #fff; }
+
+@media (max-width: 640px) {
+    .tint-row { grid-template-columns: repeat(5, 1fr); gap: 4px; }
+    .tint-btn { padding: 7px 2px; }
+    .tint-label { font-size: 9.5px; }
+    .tint-sub   { font-size: 8px; }
+    .tint-swatch { width: 20px; height: 14px; }
+}
