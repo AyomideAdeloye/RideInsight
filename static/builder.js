@@ -259,22 +259,55 @@ let currentPaintHex = "#1a1a1a";
 
 // ── Window tint ────────────────────────────────────────────────────────────
 // Doubles as a way to hide empty cabins on models with no interior mesh.
+// Real-world pricing: film darkness barely changes cost — it's the same labor.
+// ~$90 side windows, ~$110 windshield/rear = ~$200 for a full car.
+// `dim` stays high so the film colour survives at dark levels — opacity
+// carries the darkness instead of crushing the hue to black.
 const TINT_LEVELS = [
-    { key: "clear",   label: "Clear",   sub: "Factory",  opacity: 0.28, color: 0x2a3a4a, price: 0 },
-    { key: "light",   label: "Light",   sub: "50% VLT",  opacity: 0.55, color: 0x151d26, price: 150 },
-    { key: "medium",  label: "Medium",  sub: "35% VLT",  opacity: 0.74, color: 0x0e141a, price: 200 },
-    { key: "dark",    label: "Dark",    sub: "20% VLT",  opacity: 0.88, color: 0x080c10, price: 250 },
-    { key: "limo",    label: "Limo",    sub: "5% VLT",   opacity: 0.97, color: 0x04070a, price: 300 },
+    { key: "clear",   label: "Clear",   sub: "Factory", opacity: 0.26, dim: 1.00, price: 0 },
+    { key: "light",   label: "Light",   sub: "50% VLT", opacity: 0.55, dim: 0.95, price: 200 },
+    { key: "medium",  label: "Medium",  sub: "35% VLT", opacity: 0.74, dim: 0.85, price: 200 },
+    { key: "dark",    label: "Dark",    sub: "20% VLT", opacity: 0.88, dim: 0.72, price: 200 },
+    { key: "limo",    label: "Limo",    sub: "5% VLT",  opacity: 0.97, dim: 0.60, price: 200 },
 ];
-let currentTint = "medium";   // default hides empty cabins
+
+// Vivid film colors — subtle shades were invisible behind dark glass
+const TINT_COLORS = [
+    { hex: "#0d1218", label: "Charcoal" },
+    { hex: "#2b7fff", label: "Blue"     },
+    { hex: "#22d3ee", label: "Cyan"     },
+    { hex: "#17c964", label: "Green"    },
+    { hex: "#e8a12c", label: "Gold"     },
+    { hex: "#ef4444", label: "Red"      },
+    { hex: "#a855f7", label: "Purple"   },
+    { hex: "#ec4899", label: "Pink"     },
+];
+
+let currentTint    = "medium";     // default hides empty cabins
+let currentTintHex = "#0d1218";
 
 function isGlassPart(name) {
     return /Glass|Window|Windshield/i.test(name || "");
 }
 
-function applyGlassTint(key) {
+function applyGlassTint(key, colorHex) {
     const level = TINT_LEVELS.find(t => t.key === key) || TINT_LEVELS[2];
     currentTint = level.key;
+    if (colorHex) currentTintHex = colorHex;
+
+    // Darkness dims the chosen film colour rather than replacing it,
+    // so a blue tint still reads blue at limo darkness.
+    const col = new THREE.Color(currentTintHex).convertSRGBToLinear();
+    col.multiplyScalar(level.dim);
+
+    // Coloured films get a subtle self-lit glow so the hue reads through heavy
+    // tint. Low-saturation choices (charcoal/grey) stay plain glass.
+    const hsl = { h: 0, s: 0, l: 0 };
+    new THREE.Color(currentTintHex).getHSL(hsl);
+    const glow     = hsl.s < 0.25 ? 0 : 0.35 * hsl.s;
+    const emissive = new THREE.Color(currentTintHex).convertSRGBToLinear()
+                         .multiplyScalar(glow);
+
     if (carModel) {
         carModel.traverse(node => {
             if (!node.isMesh) return;
@@ -286,22 +319,35 @@ function applyGlassTint(key) {
             const mats = Array.isArray(node.material) ? node.material : [node.material];
             mats.forEach(mat => {
                 if (!mat || !mat.color) return;
-                mat.color.set(level.color);
+                mat.color.copy(col);
                 mat.transparent = true;
                 mat.opacity     = level.opacity;
                 mat.roughness   = 0.04;
                 mat.metalness   = 0.1;
                 mat.depthWrite  = level.opacity > 0.92;  // solid enough to occlude
+                if (mat.emissive) {
+                    mat.emissive.copy(emissive);
+                    if (mat.emissiveIntensity !== undefined) mat.emissiveIntensity = 1.0;
+                }
                 mat.needsUpdate = true;
             });
         });
     }
-    // Update button states
+
+    // Update button + swatch states
     document.querySelectorAll(".tint-btn").forEach(btn => {
         btn.classList.toggle("active", btn.dataset.tint === level.key);
     });
+    document.querySelectorAll(".tint-color-swatch").forEach(btn => {
+        btn.classList.toggle("active", btn.dataset.hex === currentTintHex);
+    });
+    const picker = document.getElementById("tintCustomColor");
+    if (picker && picker.value !== currentTintHex) picker.value = currentTintHex;
+
     updateBuildSummary();
 }
+
+function setTintColor(hex) { applyGlassTint(currentTint, hex); }
 
 function buildTintUI() {
     const container = document.getElementById("categorySections");
@@ -327,6 +373,22 @@ function buildTintUI() {
                         <span class="tint-sub">${t.price > 0 ? "+$" + t.price : t.sub}</span>
                     </button>
                 `).join("")}
+            </div>
+
+            <div class="tint-color-row">
+                <span class="tint-color-label">Film color</span>
+                <div class="tint-color-swatches">
+                    ${TINT_COLORS.map(c => `
+                        <button class="tint-color-swatch ${c.hex === currentTintHex ? "active" : ""}"
+                                data-hex="${c.hex}"
+                                style="background:${c.hex};"
+                                title="${c.label}"
+                                onclick="setTintColor('${c.hex}')"></button>
+                    `).join("")}
+                    <input type="color" id="tintCustomColor" value="${currentTintHex}"
+                           title="Custom film color"
+                           onchange="setTintColor(this.value)">
+                </div>
             </div>
         </div>
     `;
@@ -1315,7 +1377,8 @@ async function saveBuild() {
     // Window tint
     const tintLevel = TINT_LEVELS.find(t => t.key === currentTint);
     parts.push({ category: "tint", name: currentTint, cost: tintLevel?.price || 0,
-                 effect: tintLevel ? `${tintLevel.label} (${tintLevel.sub})` : "", icon: "" });
+                 effect: tintLevel ? `${tintLevel.label} (${tintLevel.sub})` : "",
+                 icon: currentTintHex });   // film color rides along in `icon`
 
     const payload = {
         name,
@@ -1403,7 +1466,7 @@ async function loadBuild(id) {
                 const cat = p.category.slice(7);
                 swapPart(cat, p.name);
             } else if (p.category === "tint") {
-                applyGlassTint(p.name);
+                applyGlassTint(p.name, p.icon || currentTintHex);
             } else if (perfModsSelected[p.category]) {
                 toggleMod(p.category, p.name, p.cost);
             }

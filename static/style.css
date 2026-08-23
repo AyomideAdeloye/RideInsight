@@ -5742,3 +5742,39 @@ html.dark-mode.scheme-blue   { --accent-light: #1e3a5f; }
     .tint-sub   { font-size: 8px; }
     .tint-swatch { width: 20px; height: 14px; }
 }
+
+/* Tint film color row */
+.tint-color-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid #1e293b;
+    flex-wrap: wrap;
+}
+.tint-color-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #64748b;
+}
+.tint-color-swatches { display: flex; gap: 7px; align-items: center; flex-wrap: wrap; }
+.tint-color-swatch {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    cursor: pointer;
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.15);
+    transition: transform 0.12s, border-color 0.12s;
+}
+.tint-color-swatch:hover  { transform: scale(1.18); }
+.tint-color-swatch.active { border-color: #fff; transform: scale(1.12); }
+#tintCustomColor {
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    border: 2px solid rgba(255,255,255,0.3);
+    padding: 0; cursor: pointer; background: none;
+}
