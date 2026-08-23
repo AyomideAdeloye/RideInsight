@@ -105,6 +105,24 @@ const MAZDA6_GJ_CATEGORIES = [
             { name: "RearBumper_A", label: "Stock", price: 0 },
         ]
     },
+    {
+        key:      "Wheels",
+        label:    "Wheels",
+        icon:     "disc",
+        variants: [
+            { name: "Wheel_A", label: "Stock", price: 0 },
+            // { name: "Wheel_B", label: "Multi-Spoke", price: 1400 },
+        ]
+    },
+    {
+        key:      "Brakes",
+        label:    "Brakes",
+        icon:     "circle-dot",
+        variants: [
+            { name: "Brake_A", label: "Stock", price: 0 },
+            // { name: "Brake_B", label: "Big Brake Kit", price: 2800 },
+        ]
+    },
 ];
 
 const VEHICLES = {
@@ -488,11 +506,13 @@ function isBaseMesh(name) {
 
 // Parts that keep their own look instead of taking body paint
 function isWheelOrInterior(name) {
-    return /SM_Wheel/i.test(name)
+    return /SM_Wheel|(^|_)Wheel_|(^|_)Rim_|(^|_)Tire_/i.test(name)
+        || /(^|_)Brake_|(^|_)Caliper_|(^|_)Rotor_/i.test(name)
         || /(^|_)Interior(_\d+)?$/i.test(name)
         || /Glass|Window|Windshield/i.test(name)
         || /Lights?|Headlight|Taillight|Lamp/i.test(name)
-        || /Grille|Chrome|Trim|Emblem|Badge|Mirror/i.test(name);
+        || /Grille|Chrome|Trim|Emblem|Badge|Mirror/i.test(name)
+        || /Exhaust|Muffler|Tailpipe/i.test(name);
 }
 
 // Per-part-type material presets applied on load
@@ -941,7 +961,7 @@ const NO_PAINT_MESHES = new Set([
 // Materials that keep their own look instead of taking body paint.
 // "_det"/"detail" covers packs that put tires, grille, trim and badges into a
 // single "BodyDetail" material (e.g. M_Car15_BodyDet on the modern sedan).
-const NO_PAINT_MATERIAL = /glass|light|lamp|head|tail|chrome|mirror|wiper|trim|rubber|tire|tyre|interior|grill|window|windshield|lens|emissive|metal_dark|logo|badge|plate|det(ail)?s?$|detail|wheel|rim|brake/i;
+const NO_PAINT_MATERIAL = /glass|light|lamp|head|tail|chrome|mirror|wiper|trim|rubber|tire|tyre|interior|grill|window|windshield|lens|emissive|metal_dark|logo|badge|plate|det(ail)?s?$|detail|wheel|rim|brake|caliper|rotor|disc|exhaust|muffler|pipe|seat|dash/i;
 
 // GLTF loads MeshStandardMaterial, which has no clearcoat. Swap paintable
 // body materials to MeshPhysicalMaterial so finishes look like real car paint.
