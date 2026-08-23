@@ -500,6 +500,8 @@ function isBaseMesh(name) {
     if (/SM_Wheel/i.test(name)) return true;
     if (/(^|_)Interior(_\d+)?$/i.test(name)) return true;
     if (/(^|_)Body(_\d+)?$/i.test(name)) return true;
+    // Tires are universal — they stay mounted while rims swap around them
+    if (/(^|_)Tire|(^|_)Tyre/i.test(name)) return true;
     if (/Glass|Window|Windshield|Lights?|Headlight|Taillight|Lamp|Grille|Chrome|Trim|Emblem|Badge|Mirror/i.test(name)) return true;
     return false;
 }
@@ -1048,6 +1050,14 @@ function prepMaterials() {
         node.material = Array.isArray(node.material)
             ? node.material.map(m => m && m.clone())
             : node.material.clone();
+
+        // Render opaque parts double-sided. Mirrored geometry (S X -1) often
+        // exports with inverted normals, which would otherwise show up as
+        // invisible chunks — most commonly on duplicated wheels/brakes.
+        const mats = Array.isArray(node.material) ? node.material : [node.material];
+        mats.forEach(mat => {
+            if (mat && !mat.transparent) mat.side = THREE.DoubleSide;
+        });
     });
 
     carModel.traverse(node => {
