@@ -479,7 +479,7 @@ function matchesVariant(meshName, variantName) {
 
 // Blender/GLTF sometimes puts the RI-VAS name on the parent node while the
 // mesh itself keeps a UUID name. Walk up to find the meaningful name.
-const RIVAS_NAME_RE = /(SM_Wheel|Interior|Body|Hood_|FrontBumper_|RearBumper_|Fender_|Spoiler_|Exhaust_|RunningBoard_|SKM_|Glass|Lights|Grille|Chrome|Trim)/i;
+const RIVAS_NAME_RE = /(SM_Wheel|Wheel_|Tire_|Tyre_|Brake_|Caliper|Rotor|Interior|Body|Hood_|FrontBumper_|RearBumper_|Fender_|Spoiler_|Exhaust|RunningBoard_|SKM_|Glass|Lights|Headlight|Taillight|Grille|Chrome|Trim)/i;
 function effectiveName(node) {
     let n = node;
     for (let i = 0; i < 4 && n; i++) {
