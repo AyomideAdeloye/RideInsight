@@ -5778,3 +5778,49 @@ html.dark-mode.scheme-blue   { --accent-light: #1e3a5f; }
     border: 2px solid rgba(255,255,255,0.3);
     padding: 0; cursor: pointer; background: none;
 }
+
+/* ─── Builder: paint finish picker ───────────────────────────────── */
+.finish-row {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 6px;
+}
+.finish-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 8px 4px;
+    background: #0f172a;
+    border: 1.5px solid #1e293b;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+}
+.finish-btn:hover  { border-color: #334155; background: #1e293b; }
+.finish-btn.active { border-color: var(--accent); background: rgba(37,99,235,0.12); }
+
+.finish-swatch {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    border: 1px solid rgba(255,255,255,0.2);
+}
+/* Each swatch previews its own surface character */
+.finish-gloss    { background: radial-gradient(circle at 32% 28%, #fff 0%, #9aa3ad 18%, #2c3238 60%, #14171b 100%); }
+.finish-metallic { background: radial-gradient(circle at 32% 28%, #fff 0%, #c3ccd6 14%, #6b7480 45%, #23282e 100%); }
+.finish-satin    { background: radial-gradient(circle at 35% 30%, #c9d0d8 0%, #7d848c 45%, #2b3036 100%); }
+.finish-matte    { background: linear-gradient(150deg, #4a5058 0%, #33383e 100%); }
+.finish-chrome   { background: linear-gradient(150deg, #fff 0%, #b9c3ce 22%, #5d6772 48%, #e8eef5 68%, #79838e 100%); }
+
+.finish-label { font-size: 10.5px; font-weight: 700; color: #cbd5e1; }
+.finish-sub   { font-size: 9px; color: #94a3b8; }
+.finish-btn.active .finish-label { color: #fff; }
+
+@media (max-width: 640px) {
+    .finish-row { gap: 4px; }
+    .finish-btn { padding: 7px 2px; }
+    .finish-swatch { width: 20px; height: 20px; }
+    .finish-label { font-size: 9.5px; }
+    .finish-sub   { font-size: 8px; }
+}

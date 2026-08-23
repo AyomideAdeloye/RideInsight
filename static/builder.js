@@ -257,6 +257,22 @@ const PAINT_COLORS = [
 
 let currentPaintHex = "#1a1a1a";
 
+// ── Paint finish ───────────────────────────────────────────────────────────
+// Clearcoat is what sells "car paint" vs "plastic toy".
+const PAINT_FINISHES = [
+    { key: "gloss",    label: "Gloss",    sub: "Factory",  price: 0,
+      roughness: 0.14, metalness: 0.45, clearcoat: 1.0, clearcoatRoughness: 0.03, env: 1.1 },
+    { key: "metallic", label: "Metallic", sub: "Flake",    price: 1200,
+      roughness: 0.22, metalness: 0.85, clearcoat: 1.0, clearcoatRoughness: 0.06, env: 1.35 },
+    { key: "satin",    label: "Satin",    sub: "Wrap",     price: 2500,
+      roughness: 0.42, metalness: 0.55, clearcoat: 0.5, clearcoatRoughness: 0.35, env: 0.8 },
+    { key: "matte",    label: "Matte",    sub: "Wrap",     price: 3000,
+      roughness: 0.88, metalness: 0.08, clearcoat: 0.0, clearcoatRoughness: 1.0, env: 0.45 },
+    { key: "chrome",   label: "Chrome",   sub: "Wrap",     price: 5000,
+      roughness: 0.04, metalness: 1.0, clearcoat: 1.0, clearcoatRoughness: 0.02, env: 1.6 },
+];
+let currentFinish = "gloss";
+
 // ── Window tint ────────────────────────────────────────────────────────────
 // Doubles as a way to hide empty cabins on models with no interior mesh.
 // Real-world pricing: film darkness barely changes cost — it's the same labor.
@@ -349,6 +365,35 @@ function applyGlassTint(key, colorHex) {
 
 function setTintColor(hex) { applyGlassTint(currentTint, hex); }
 
+function buildFinishUI() {
+    const container = document.getElementById("categorySections");
+    if (!container) return;
+
+    const header = document.createElement("div");
+    header.className = "builder-section-group-label";
+    header.innerHTML = `<i data-lucide="sparkles"></i> Paint Finish`;
+    container.appendChild(header);
+
+    const section = document.createElement("div");
+    section.className = "builder-section";
+    section.innerHTML = `
+        <div class="builder-section-body">
+            <div class="finish-row">
+                ${PAINT_FINISHES.map(f => `
+                    <button class="finish-btn ${f.key === currentFinish ? "active" : ""}"
+                            data-finish="${f.key}"
+                            onclick="applyFinish('${f.key}')">
+                        <span class="finish-swatch finish-${f.key}"></span>
+                        <span class="finish-label">${f.label}</span>
+                        <span class="finish-sub">${f.price > 0 ? "+$" + f.price.toLocaleString() : f.sub}</span>
+                    </button>
+                `).join("")}
+            </div>
+        </div>
+    `;
+    container.appendChild(section);
+}
+
 function buildTintUI() {
     const container = document.getElementById("categorySections");
     if (!container) return;
@@ -404,9 +449,13 @@ let baseNodes = [];  // always-visible meshes (body, interior, wheels)
 let bodyMaterial = null;
 let autoRotate = true;
 
-// Match "AnyPrefix_Hood_A", "AnyPrefix_Hood_A_1", "Hood_A_2" → variant "Hood_A"
+// Match a mesh to a variant, allowing:
+//   prefix        "Founder_Stang_1967_Hood_A"
+//   split pieces  "Hood_A_1", "Hood_A_2"
+//   per-corner    "Wheel_B_FL", "Brake_A_RR"  (so one click swaps all 4)
+const CORNER_SUFFIX = "(_(FL|FR|RL|RR|BL|BR|L|R))?";
 function matchesVariant(meshName, variantName) {
-    const re = new RegExp("(^|_)" + variantName + "(_\\d+)?$");
+    const re = new RegExp("(^|_)" + variantName + CORNER_SUFFIX + "(_\\d+)?$", "i");
     return re.test(meshName);
 }
 
@@ -477,9 +526,19 @@ function styleForPart(name) {
     if (/Exhaust|Muffler|Tailpipe|Pipe/i.test(name))
         return { color: 0x9aa0a8, roughness: 0.3, metalness: 0.9 };
 
-    // Wheels / rims / tires — bare "Wheel" too, not just SM_Wheel
-    if (/Wheel|Rim|Tire|Tyre|Brake/i.test(name))
-        return { color: 0x26292e, roughness: 0.55, metalness: 0.45 };
+    // Tires — flat black rubber (checked before rims so it wins)
+    if (/Tire|Tyre|Rubber/i.test(name))
+        return { color: 0x14161a, roughness: 0.92, metalness: 0.0 };
+
+    // Brake calipers / rotors — swappable big-brake kits
+    if (/Caliper/i.test(name))
+        return { color: 0xb02a2a, roughness: 0.35, metalness: 0.5 };
+    if (/Brake|Rotor|Disc/i.test(name))
+        return { color: 0x6e737a, roughness: 0.4, metalness: 0.8 };
+
+    // Rims / wheels — metallic
+    if (/Wheel|Rim/i.test(name))
+        return { color: 0x9aa1aa, roughness: 0.3, metalness: 0.85 };
 
     if (/Interior|Seat|Dash/i.test(name))
         return { color: 0x23262b, roughness: 0.85, metalness: 0.05 };
@@ -732,6 +791,7 @@ function loadModel() {
 
             scene.add(carModel);
             prepMaterials();
+            upgradeBodyMaterialsToPhysical();
 
             // Fixed 3/4 camera — car fills the frame like a configurator
             controls.target.set(0, 0.9, 0);
@@ -786,6 +846,7 @@ function rebuildCustomizationUI() {
     if (container) container.innerHTML = "";
     buildBodyStyleUI();
     buildPartSelectorUI();
+    buildFinishUI();
     buildTintUI();
     buildPerfModsUI();
     if (window.refreshIcons) window.refreshIcons();
@@ -882,6 +943,46 @@ const NO_PAINT_MESHES = new Set([
 // single "BodyDetail" material (e.g. M_Car15_BodyDet on the modern sedan).
 const NO_PAINT_MATERIAL = /glass|light|lamp|head|tail|chrome|mirror|wiper|trim|rubber|tire|tyre|interior|grill|window|windshield|lens|emissive|metal_dark|logo|badge|plate|det(ail)?s?$|detail|wheel|rim|brake/i;
 
+// GLTF loads MeshStandardMaterial, which has no clearcoat. Swap paintable
+// body materials to MeshPhysicalMaterial so finishes look like real car paint.
+function upgradeBodyMaterialsToPhysical() {
+    if (!carModel || !THREE.MeshPhysicalMaterial) return;
+    carModel.traverse(node => {
+        if (!node.isMesh || !node.material) return;
+        const rivas = node.userData.rivasName || effectiveName(node);
+        if (isWheelOrInterior(rivas)) return;
+
+        const convert = (mat) => {
+            if (!mat || mat.isMeshPhysicalMaterial) return mat;
+            if (mat.name && NO_PAINT_MATERIAL.test(mat.name)) return mat;
+            if (styleForPart(mat.name || "") || styleForPart(rivas)) return mat;
+            const p = new THREE.MeshPhysicalMaterial();
+            THREE.Material.prototype.copy.call(p, mat);
+            p.color.copy(mat.color);
+            p.map          = mat.map || null;
+            p.normalMap    = mat.normalMap || null;
+            p.roughness    = mat.roughness;
+            p.metalness    = mat.metalness;
+            p.name         = mat.name;
+            return p;
+        };
+
+        node.material = Array.isArray(node.material)
+            ? node.material.map(convert)
+            : convert(node.material);
+    });
+}
+
+function applyFinish(key) {
+    const f = PAINT_FINISHES.find(x => x.key === key) || PAINT_FINISHES[0];
+    currentFinish = f.key;
+    applyPaint(currentPaintHex);
+    document.querySelectorAll(".finish-btn").forEach(btn => {
+        btn.classList.toggle("active", btn.dataset.finish === f.key);
+    });
+    updateBuildSummary();
+}
+
 function applyPaint(hex) {
     currentPaintHex = hex;
     if (!carModel) return;
@@ -897,6 +998,16 @@ function applyPaint(hex) {
             if (mat.transparent && mat.opacity < 0.3) return;
             if (mat.name && NO_PAINT_MATERIAL.test(mat.name)) return;   // keep lights/glass/trim
             mat.color.copy(color);
+
+            // Apply the selected finish to painted panels
+            const f = PAINT_FINISHES.find(x => x.key === currentFinish) || PAINT_FINISHES[0];
+            mat.roughness = f.roughness;
+            mat.metalness = f.metalness;
+            if (mat.envMapIntensity !== undefined) mat.envMapIntensity = f.env;
+            if (mat.clearcoat !== undefined) {
+                mat.clearcoat          = f.clearcoat;
+                mat.clearcoatRoughness = f.clearcoatRoughness;
+            }
             mat.needsUpdate = true;
         });
     });
@@ -1313,6 +1424,13 @@ function updateBuildSummary() {
         }
     });
 
+    // Paint finish
+    const fin = PAINT_FINISHES.find(f => f.key === currentFinish);
+    if (fin && fin.price > 0) {
+        visualTotal += fin.price;
+        items.push({ name: `Paint Finish: ${fin.label} ${fin.sub}`, cost: fin.price });
+    }
+
     // Window tint
     const tint = TINT_LEVELS.find(t => t.key === currentTint);
     if (tint && tint.price > 0) {
@@ -1375,6 +1493,9 @@ async function saveBuild() {
     // Record which body this build uses
     parts.push({ category: "vehicle", name: currentVehicleKey, cost: 0, effect: VEHICLES[currentVehicleKey].label, icon: "" });
     // Window tint
+    const finLevel = PAINT_FINISHES.find(f => f.key === currentFinish);
+    parts.push({ category: "finish", name: currentFinish, cost: finLevel?.price || 0,
+                 effect: finLevel ? finLevel.label : "", icon: "" });
     const tintLevel = TINT_LEVELS.find(t => t.key === currentTint);
     parts.push({ category: "tint", name: currentTint, cost: tintLevel?.price || 0,
                  effect: tintLevel ? `${tintLevel.label} (${tintLevel.sub})` : "",
@@ -1465,6 +1586,8 @@ async function loadBuild(id) {
             if (p.category && p.category.startsWith("visual:")) {
                 const cat = p.category.slice(7);
                 swapPart(cat, p.name);
+            } else if (p.category === "finish") {
+                applyFinish(p.name);
             } else if (p.category === "tint") {
                 applyGlassTint(p.name, p.icon || currentTintHex);
             } else if (perfModsSelected[p.category]) {
@@ -1502,6 +1625,7 @@ function clearBuild() {
     const slider = document.getElementById("lightSlider");
     if (slider) slider.value = 45;
     paintFromWheel();
+    applyFinish("gloss");
     applyGlassTint("medium");
     updateBuildSummary();
 }
