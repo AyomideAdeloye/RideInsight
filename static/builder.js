@@ -960,6 +960,12 @@ function loadModel() {
             controls.maxDistance = 16;
             controls.update();
 
+            // Rebuild the panel now that we know which meshes exist.
+            // (The UI is built at page load, but partNodes only fills in once
+            // the GLB has downloaded — without this, every variant looks
+            // "not modelled yet" and the whole category is hidden.)
+            rebuildCustomizationUI();
+
             // Apply default paint + tint
             applyPaint(currentPaintHex);
             applyGlassTint(currentTint);
