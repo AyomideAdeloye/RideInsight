@@ -106,6 +106,16 @@ const MAZDA6_GJ_CATEGORIES = [
         ]
     },
     {
+        key:      "Spoiler",
+        label:    "Spoiler",
+        icon:     "wind",
+        variants: [
+            // Spoiler_A has no mesh — selecting it simply hides Spoiler_B
+            { name: "Spoiler_A", label: "None",        price: 0 },
+            { name: "Spoiler_B", label: "Lip Spoiler", price: 450 },
+        ]
+    },
+    {
         key:      "Wheels",
         label:    "Wheels",
         icon:     "disc",
@@ -320,6 +330,38 @@ const TINT_COLORS = [
 let currentTint    = "medium";     // default hides empty cabins
 let currentTintHex = "#0d1218";
 
+// ── Accent parts (spoilers, wings, splitters, diffusers) ───────────────────
+// These are rarely body-matched in real life, so they get their own colour.
+function isAccentPart(name) {
+    return /Spoiler|Wing|Diffuser|Splitter|Lip_|Canard/i.test(name || "");
+}
+
+const ACCENT_FINISHES = [
+    { key: "match",  label: "Body",   hex: null,      roughness: 0.14, metalness: 0.45 },
+    { key: "gloss",  label: "Black",  hex: "#0b0d10", roughness: 0.10, metalness: 0.35 },
+    { key: "matte",  label: "Matte",  hex: "#15171a", roughness: 0.85, metalness: 0.05 },
+    { key: "carbon", label: "Carbon", hex: "#1a1d22", roughness: 0.22, metalness: 0.65 },
+    { key: "silver", label: "Silver", hex: "#b9c0c8", roughness: 0.18, metalness: 0.85 },
+];
+let currentAccent    = "gloss";     // most spoilers are gloss black
+let currentAccentHex = "#0b0d10";
+
+function applyAccent(key, customHex) {
+    const f = ACCENT_FINISHES.find(x => x.key === key) || ACCENT_FINISHES[1];
+    currentAccent = f.key;
+    if (customHex) { currentAccent = "custom"; currentAccentHex = customHex; }
+    else if (f.hex) currentAccentHex = f.hex;
+
+    applyPaint(currentPaintHex);   // repaints body + accents together
+
+    document.querySelectorAll(".accent-btn").forEach(btn => {
+        btn.classList.toggle("active", btn.dataset.accent === currentAccent);
+    });
+    const picker = document.getElementById("accentCustomColor");
+    if (picker && customHex) picker.value = customHex;
+    updateBuildSummary();
+}
+
 function isGlassPart(name) {
     const n = name || "";
     // Lights are often modelled as glass/lens material — never tint them,
@@ -410,6 +452,39 @@ function buildFinishUI() {
                         <span class="finish-sub">${f.price > 0 ? "+$" + f.price.toLocaleString() : f.sub}</span>
                     </button>
                 `).join("")}
+            </div>
+        </div>
+    `;
+    container.appendChild(section);
+}
+
+function buildAccentUI() {
+    const container = document.getElementById("categorySections");
+    if (!container) return;
+
+    const header = document.createElement("div");
+    header.className = "builder-section-group-label";
+    header.innerHTML = `<i data-lucide="wind"></i> Spoiler / Body Kit Finish`;
+    container.appendChild(header);
+
+    const section = document.createElement("div");
+    section.className = "builder-section";
+    section.innerHTML = `
+        <div class="builder-section-body">
+            <div class="accent-row">
+                ${ACCENT_FINISHES.map(f => `
+                    <button class="accent-btn ${f.key === currentAccent ? "active" : ""}"
+                            data-accent="${f.key}"
+                            onclick="applyAccent('${f.key}')">
+                        <span class="accent-swatch" style="background:${f.hex || "linear-gradient(135deg,#c0392b,#2471a3)"};"></span>
+                        <span class="accent-label">${f.label}</span>
+                    </button>
+                `).join("")}
+            </div>
+            <div class="accent-custom-row">
+                <span class="accent-custom-label">Custom</span>
+                <input type="color" id="accentCustomColor" value="${currentAccentHex}"
+                       onchange="applyAccent('custom', this.value)">
             </div>
         </div>
     `;
@@ -570,7 +645,10 @@ function styleForPart(name) {
     if (/Trim|Moulding|Molding|Blackout|Beltline/i.test(name))
         return { color: 0x15181c, roughness: 0.55, metalness: 0.25, env: 0.4 };
 
-    if (/Chrome|Mirror|Emblem|Badge/i.test(name))
+    // Chrome trim and actual mirror glass — but NOT mirror caps/housings,
+    // which are body-coloured on most cars and should take paint.
+    if (/Chrome|Emblem|Badge/i.test(name)
+        || (/Mirror/i.test(name) && !/Side_?Mirror|MirrorCap|MirrorHousing|Mirror_?Cover/i.test(name)))
         return { color: 0xc9ced6, roughness: 0.12, metalness: 0.95 };
 
     // Exhaust tips — brushed steel
@@ -900,6 +978,7 @@ function rebuildCustomizationUI() {
     buildBodyStyleUI();
     buildPartSelectorUI();
     buildFinishUI();
+    buildAccentUI();
     buildTintUI();
     buildPerfModsUI();
     if (window.refreshIcons) window.refreshIcons();
@@ -1054,6 +1133,22 @@ function applyPaint(hex) {
             // Anything with a style preset (pillars, frit, grille, lights…)
             // is NOT a paintable panel — this used to overwrite their colours.
             if (styleForPart(mat.name || "") || styleForPart(rivas)) return;
+
+            // Spoilers / wings / splitters use the accent colour unless the
+            // user picked "Body" match.
+            if (isAccentPart(rivas) || isAccentPart(mat.name || "")) {
+                const af = ACCENT_FINISHES.find(x => x.key === currentAccent);
+                if (currentAccent !== "match") {
+                    mat.color.copy(new THREE.Color(currentAccentHex).convertSRGBToLinear());
+                    if (af) {
+                        mat.roughness = af.roughness;
+                        mat.metalness = af.metalness;
+                    }
+                    mat.needsUpdate = true;
+                    return;
+                }
+            }
+
             mat.color.copy(color);
 
             // Apply the selected finish to painted panels
@@ -1560,6 +1655,8 @@ async function saveBuild() {
     // Record which body this build uses
     parts.push({ category: "vehicle", name: currentVehicleKey, cost: 0, effect: VEHICLES[currentVehicleKey].label, icon: "" });
     // Window tint
+    parts.push({ category: "accent", name: currentAccent, cost: 0,
+                 effect: currentAccentHex, icon: currentAccentHex });
     const finLevel = PAINT_FINISHES.find(f => f.key === currentFinish);
     parts.push({ category: "finish", name: currentFinish, cost: finLevel?.price || 0,
                  effect: finLevel ? finLevel.label : "", icon: "" });
@@ -1653,6 +1750,8 @@ async function loadBuild(id) {
             if (p.category && p.category.startsWith("visual:")) {
                 const cat = p.category.slice(7);
                 swapPart(cat, p.name);
+            } else if (p.category === "accent") {
+                applyAccent(p.name, p.name === "custom" ? (p.icon || p.effect) : null);
             } else if (p.category === "finish") {
                 applyFinish(p.name);
             } else if (p.category === "tint") {
@@ -1693,6 +1792,7 @@ function clearBuild() {
     if (slider) slider.value = 45;
     paintFromWheel();
     applyFinish("gloss");
+    applyAccent("gloss");
     applyGlassTint("medium");
     updateBuildSummary();
 }

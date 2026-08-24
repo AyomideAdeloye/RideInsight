@@ -5824,3 +5824,61 @@ html.dark-mode.scheme-blue   { --accent-light: #1e3a5f; }
     .finish-label { font-size: 9.5px; }
     .finish-sub   { font-size: 8px; }
 }
+
+/* ─── Builder: spoiler / body-kit accent finish ──────────────────── */
+.accent-row {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 6px;
+}
+.accent-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 8px 4px;
+    background: #0f172a;
+    border: 1.5px solid #1e293b;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+}
+.accent-btn:hover  { border-color: #334155; background: #1e293b; }
+.accent-btn.active { border-color: var(--accent); background: rgba(37,99,235,0.12); }
+.accent-swatch {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    border: 1px solid rgba(255,255,255,0.22);
+}
+.accent-label { font-size: 10px; font-weight: 700; color: #cbd5e1; }
+.accent-btn.active .accent-label { color: #fff; }
+
+.accent-custom-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid #1e293b;
+}
+.accent-custom-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #64748b;
+}
+#accentCustomColor {
+    width: 24px; height: 24px;
+    border-radius: 50%;
+    border: 2px solid rgba(255,255,255,0.3);
+    padding: 0; cursor: pointer; background: none;
+}
+
+@media (max-width: 640px) {
+    .accent-row { gap: 4px; }
+    .accent-btn { padding: 7px 2px; }
+    .accent-swatch { width: 19px; height: 19px; }
+    .accent-label { font-size: 9px; }
+}
