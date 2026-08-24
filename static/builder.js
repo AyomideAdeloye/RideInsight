@@ -145,10 +145,14 @@ const MAZDA6_GJ_CATEGORIES = [
         // yet is hidden automatically, so new wheels appear just by exporting.
         variants: [
             // Prices are real retail (set of 4) — update as parts are sourced
-            { name: "Wheel_A", label: "Stock",       price: 0 },
-            { name: "Wheel_B", label: 'EV112 21"',   price: 4295 },
-            { name: "Wheel_C", label: "SL-C13",      price: 5996 },
-            { name: "Wheel_D", label: "Deep Dish",   price: 1900 },
+            { name: "Wheel_A", label: "Stock 19\"",  price: 0,
+              url: "https://www.walmart.com/ip/1320398289" },
+            { name: "Wheel_B", label: 'EV112 21"',   price: 4295,
+              url: "https://evsportline.com/products/ev112-21-porsche-taycan-wheel-set-of-4" },
+            { name: "Wheel_C", label: "SL-C13",      price: 5996,
+              url: "https://www.spluxwheels.com/products/sl-c13" },
+            { name: "Wheel_D", label: "Enkei TS-7",  price: 998,
+              url: "https://www.tirerack.com/wheels/WheelCloseUpServlet?target=runWheelSearch&wheelMake=Enkei+Tuning&wheelModel=TS-7&wheelFinish=Matte+Bronze" },
             { name: "Wheel_E", label: "Track",       price: 2200 },
         ]
     },
@@ -779,10 +783,22 @@ function initScene() {
     renderer.toneMappingExposure = 1.0;
     resizeRenderer();
 
-    // Scene — clean studio look
+    // Scene — studio sweep. A backdrop sphere is used instead of
+    // scene.background, which doesn't reliably render plain textures in r128.
     scene = new THREE.Scene();
-    scene.background = new THREE.Color(0xa8adb5);
-    scene.fog = new THREE.Fog(0xa8adb5, 30, 70);
+    scene.background = new THREE.Color(0x9ea3ab);   // fallback behind the sphere
+    scene.fog = null;                               // fog would flatten the gradient
+
+    const backdrop = new THREE.Mesh(
+        new THREE.SphereGeometry(90, 32, 24),
+        new THREE.MeshBasicMaterial({
+            map: makeBackdropTexture(),
+            side: THREE.BackSide,        // we're inside it, so render inner faces
+            depthWrite: false,
+            fog: false,
+        })
+    );
+    scene.add(backdrop);
 
     // Camera
     camera = new THREE.PerspectiveCamera(34, canvas.clientWidth / canvas.clientHeight, 0.1, 200);
@@ -828,11 +844,33 @@ function initScene() {
     // Ground — gray studio floor
     const ground = new THREE.Mesh(
         new THREE.PlaneGeometry(80, 80),
-        new THREE.MeshStandardMaterial({ color: 0x9a9ea6, roughness: 0.95, metalness: 0 })
+        new THREE.MeshStandardMaterial({ color: 0x8f939a, roughness: 0.95, metalness: 0 })
     );
     ground.rotation.x = -Math.PI / 2;
     ground.receiveShadow = true;
     scene.add(ground);
+
+    // Soft lit pool under the car so the floor doesn't read as endless flat grey
+    const poolCanvas = document.createElement("canvas");
+    poolCanvas.width = poolCanvas.height = 256;
+    const pctx = poolCanvas.getContext("2d");
+    const rg = pctx.createRadialGradient(128, 128, 10, 128, 128, 128);
+    rg.addColorStop(0.0, "rgba(255,255,255,0.55)");
+    rg.addColorStop(0.5, "rgba(255,255,255,0.22)");
+    rg.addColorStop(1.0, "rgba(255,255,255,0)");
+    pctx.fillStyle = rg;
+    pctx.fillRect(0, 0, 256, 256);
+    const pool = new THREE.Mesh(
+        new THREE.PlaneGeometry(26, 26),
+        new THREE.MeshBasicMaterial({
+            map: new THREE.CanvasTexture(poolCanvas),
+            transparent: true,
+            depthWrite: false,
+        })
+    );
+    pool.rotation.x = -Math.PI / 2;
+    pool.position.y = 0.002;
+    scene.add(pool);
 
     buildEnvMap();   // needs scene + renderer both ready
     loadModel();
@@ -851,6 +889,27 @@ function resizeRenderer() {
         camera.aspect = w / h;
         camera.updateProjectionMatrix();
     }
+}
+
+// Vertical gradient backdrop — reads as a photo studio sweep rather than
+// a flat colour fill. Much cheaper than loading an HDRI.
+function makeBackdropTexture() {
+    const c = document.createElement("canvas");
+    c.width = 64; c.height = 512;
+    const ctx = c.getContext("2d");
+    const g = ctx.createLinearGradient(0, 0, 0, 512);
+    // Sphere maps top-of-image to top-of-sphere, so this reads:
+    // dark ceiling -> mid wall -> bright horizon -> darker floor
+    g.addColorStop(0.00, "#5f656e");
+    g.addColorStop(0.35, "#8d939b");
+    g.addColorStop(0.58, "#c6cad0");   // bright band at eye level
+    g.addColorStop(0.75, "#9aa0a8");
+    g.addColorStop(1.00, "#6b7079");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 64, 512);
+    const tex = new THREE.CanvasTexture(c);
+    if (THREE.sRGBEncoding !== undefined) tex.encoding = THREE.sRGBEncoding;
+    return tex;
 }
 
 // Studio environment map — gives metallic car paint its reflections
@@ -1420,6 +1479,10 @@ function buildPartSelectorUI() {
             setVariantVisible(available[0].name, true);
         }
 
+        // Parts sourced from real retailers may not fit every vehicle —
+        // the builder is for visualising looks and gauging cost.
+        const needsFitmentNote = /Wheels|Brakes|Tires/i.test(cat.key);
+
         const section = document.createElement("div");
         section.className = "builder-section";
         section.id = `cat-${cat.key}`;
@@ -1438,9 +1501,18 @@ function buildPartSelectorUI() {
                             onclick="swapPart('${cat.key}', '${v.name}')">
                             <span class="pv-label">${v.label}</span>
                             <span class="pv-price">${v.price > 0 ? "+$" + v.price.toLocaleString() : "Included"}</span>
+                            ${v.url ? `<span class="pv-link" title="View product"
+                                 onclick="event.stopPropagation();window.open('${v.url}','_blank','noopener')">
+                                 <i data-lucide="external-link"></i></span>` : ""}
                         </button>
                     `).join("")}
                 </div>
+                ${needsFitmentNote ? `
+                <p class="fitment-note">
+                    <i data-lucide="info"></i>
+                    Shown for looks and price reference. Fitment isn't verified —
+                    confirm size and offset with the seller before buying.
+                </p>` : ""}
             </div>
         `;
         container.appendChild(section);

@@ -5882,3 +5882,35 @@ html.dark-mode.scheme-blue   { --accent-light: #1e3a5f; }
     .accent-swatch { width: 19px; height: 19px; }
     .accent-label { font-size: 9px; }
 }
+
+/* Product link icon on part variant buttons */
+.part-variant-btn { position: relative; }
+.pv-link {
+    position: absolute;
+    top: 3px;
+    right: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    border-radius: 4px;
+    color: #64748b;
+    transition: color 0.15s, background 0.15s;
+}
+.pv-link i { width: 11px; height: 11px; }
+.pv-link:hover { color: var(--accent); background: rgba(255,255,255,0.08); }
+
+/* Fitment disclaimer under wheel/brake/tire options */
+.fitment-note {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    margin-top: 10px;
+    padding-top: 9px;
+    border-top: 1px solid #1e293b;
+    font-size: 10.5px;
+    line-height: 1.45;
+    color: #7d879a;
+}
+.fitment-note i { width: 12px; height: 12px; flex-shrink: 0; margin-top: 1px; }
