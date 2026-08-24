@@ -144,8 +144,9 @@ const MAZDA6_GJ_CATEGORIES = [
         // Slots pre-registered — any variant whose meshes aren't in the GLB
         // yet is hidden automatically, so new wheels appear just by exporting.
         variants: [
+            // Prices are real retail (set of 4) — update as parts are sourced
             { name: "Wheel_A", label: "Stock",       price: 0 },
-            { name: "Wheel_B", label: "Multi-Spoke", price: 1400 },
+            { name: "Wheel_B", label: 'EV112 21"',   price: 4295 },
             { name: "Wheel_C", label: "Mesh",        price: 1600 },
             { name: "Wheel_D", label: "Deep Dish",   price: 1900 },
             { name: "Wheel_E", label: "Track",       price: 2200 },
