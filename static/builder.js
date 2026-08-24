@@ -110,18 +110,45 @@ const MAZDA6_GJ_CATEGORIES = [
         label:    "Spoiler",
         icon:     "wind",
         variants: [
-            // Spoiler_A has no mesh — selecting it simply hides Spoiler_B
-            { name: "Spoiler_A", label: "None",        price: 0 },
-            { name: "Spoiler_B", label: "Lip Spoiler", price: 450 },
+            // alwaysShow: intentionally has no mesh — it's the "off" option
+            { name: "Spoiler_A", label: "None",        price: 0,    alwaysShow: true },
+            { name: "Spoiler_B", label: "Lip Spoiler", price: 450  },
+            { name: "Spoiler_C", label: "GT Wing",     price: 1200 },
+            { name: "Spoiler_D", label: "Ducktail",    price: 800  },
+        ]
+    },
+    {
+        key:      "FrontLip",
+        label:    "Front Lip",
+        icon:     "chevrons-down",
+        variants: [
+            { name: "FrontLip_A", label: "None",     price: 0,   alwaysShow: true },
+            { name: "FrontLip_B", label: "Splitter", price: 650 },
+            { name: "FrontLip_C", label: "Chin Lip", price: 400 },
+        ]
+    },
+    {
+        key:      "SideSkirt",
+        label:    "Side Skirts",
+        icon:     "minus",
+        variants: [
+            { name: "SideSkirt_A", label: "None",   price: 0,   alwaysShow: true },
+            { name: "SideSkirt_B", label: "Sport",  price: 700 },
+            { name: "SideSkirt_C", label: "Carbon", price: 1100 },
         ]
     },
     {
         key:      "Wheels",
         label:    "Wheels",
         icon:     "disc",
+        // Slots pre-registered — any variant whose meshes aren't in the GLB
+        // yet is hidden automatically, so new wheels appear just by exporting.
         variants: [
-            { name: "Wheel_A", label: "Stock", price: 0 },
-            // { name: "Wheel_B", label: "Multi-Spoke", price: 1400 },
+            { name: "Wheel_A", label: "Stock",       price: 0 },
+            { name: "Wheel_B", label: "Multi-Spoke", price: 1400 },
+            { name: "Wheel_C", label: "Mesh",        price: 1600 },
+            { name: "Wheel_D", label: "Deep Dish",   price: 1900 },
+            { name: "Wheel_E", label: "Track",       price: 2200 },
         ]
     },
     {
@@ -129,8 +156,9 @@ const MAZDA6_GJ_CATEGORIES = [
         label:    "Brakes",
         icon:     "circle-dot",
         variants: [
-            { name: "Brake_A", label: "Stock", price: 0 },
-            // { name: "Brake_B", label: "Big Brake Kit", price: 2800 },
+            { name: "Brake_A", label: "Stock",          price: 0 },
+            { name: "Brake_B", label: "Big Brake Kit",  price: 2800 },
+            { name: "Brake_C", label: "Drilled Rotors", price: 1600 },
         ]
     },
 ];
@@ -1356,6 +1384,23 @@ function buildPartSelectorUI() {
     container.appendChild(header);
 
     PART_CATEGORIES.forEach(cat => {
+        // Only show variants whose meshes actually exist in the loaded GLB.
+        // Lets slots be pre-registered — a new part appears the moment it's
+        // exported, with no code change.
+        const available = cat.variants.filter(v =>
+            v.alwaysShow || (partNodes[v.name] && partNodes[v.name].length > 0)
+        );
+        // Nothing modelled for this category yet → skip it entirely
+        if (available.length === 0) return;
+        if (available.length === 1 && available[0].alwaysShow) return;
+
+        // If the default variant isn't actually in this model, fall back to
+        // the first one that is, so the highlight always matches reality.
+        if (!available.some(v => v.name === selected[cat.key])) {
+            selected[cat.key] = available[0].name;
+            setVariantVisible(available[0].name, true);
+        }
+
         const section = document.createElement("div");
         section.className = "builder-section";
         section.id = `cat-${cat.key}`;
@@ -1367,9 +1412,9 @@ function buildPartSelectorUI() {
             </div>
             <div class="builder-section-body" id="body-cat-${cat.key}">
                 <div class="part-variants-row">
-                    ${cat.variants.map((v, i) => `
+                    ${available.map((v, i) => `
                         <button
-                            class="part-variant-btn ${i === 0 ? "active" : ""}"
+                            class="part-variant-btn ${v.name === selected[cat.key] ? "active" : ""}"
                             data-variant="${v.name}"
                             onclick="swapPart('${cat.key}', '${v.name}')">
                             <span class="pv-label">${v.label}</span>
