@@ -696,9 +696,18 @@ function styleForPart(name) {
     if (/Brake|Rotor|Disc/i.test(name))
         return { color: 0x6e737a, roughness: 0.4, metalness: 0.8 };
 
-    // Rims / wheels — metallic
-    if (/Wheel|Rim/i.test(name))
-        return { color: 0x9aa1aa, roughness: 0.3, metalness: 0.85 };
+    // Rims — finish is encoded in the material name, e.g. RimBlack,
+    // RimBronze, RimGunmetal. Plain "Rim" defaults to silver.
+    if (/Wheel|Rim/i.test(name)) {
+        if (/Black|Gloss?Blk/i.test(name))        return { color: 0x0e1013, roughness: 0.18, metalness: 0.55 };
+        if (/Matte|Satin/i.test(name))            return { color: 0x2c3035, roughness: 0.62, metalness: 0.35 };
+        if (/Gunmetal|Anthracite|Graphite/i.test(name)) return { color: 0x3a4046, roughness: 0.32, metalness: 0.7 };
+        if (/Bronze/i.test(name))                 return { color: 0x8a6a3a, roughness: 0.3, metalness: 0.8 };
+        if (/Gold/i.test(name))                   return { color: 0xc9a227, roughness: 0.25, metalness: 0.9 };
+        if (/White/i.test(name))                  return { color: 0xdfe3e8, roughness: 0.25, metalness: 0.6 };
+        if (/Chrome|Polish/i.test(name))          return { color: 0xdfe5ec, roughness: 0.05, metalness: 1.0 };
+        return { color: 0x9aa1aa, roughness: 0.3, metalness: 0.85 };   // silver
+    }
 
     if (/Interior|Seat|Dash/i.test(name))
         return { color: 0x23262b, roughness: 0.85, metalness: 0.05 };
