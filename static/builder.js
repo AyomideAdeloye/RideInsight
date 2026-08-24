@@ -147,7 +147,7 @@ const MAZDA6_GJ_CATEGORIES = [
             // Prices are real retail (set of 4) — update as parts are sourced
             { name: "Wheel_A", label: "Stock",       price: 0 },
             { name: "Wheel_B", label: 'EV112 21"',   price: 4295 },
-            { name: "Wheel_C", label: "Mesh",        price: 1600 },
+            { name: "Wheel_C", label: "SL-C13",      price: 5996 },
             { name: "Wheel_D", label: "Deep Dish",   price: 1900 },
             { name: "Wheel_E", label: "Track",       price: 2200 },
         ]
@@ -705,6 +705,9 @@ function styleForPart(name) {
         if (/Bronze/i.test(name))                 return { color: 0x8a6a3a, roughness: 0.3, metalness: 0.8 };
         if (/Gold/i.test(name))                   return { color: 0xc9a227, roughness: 0.25, metalness: 0.9 };
         if (/White/i.test(name))                  return { color: 0xdfe3e8, roughness: 0.25, metalness: 0.6 };
+        if (/Red|Crimson/i.test(name))            return { color: 0xa01d24, roughness: 0.22, metalness: 0.7 };
+        if (/Blue/i.test(name))                   return { color: 0x1d4e9c, roughness: 0.22, metalness: 0.7 };
+        if (/Copper/i.test(name))                 return { color: 0xa2603a, roughness: 0.28, metalness: 0.85 };
         if (/Chrome|Polish/i.test(name))          return { color: 0xdfe5ec, roughness: 0.05, metalness: 1.0 };
         return { color: 0x9aa1aa, roughness: 0.3, metalness: 0.85 };   // silver
     }
