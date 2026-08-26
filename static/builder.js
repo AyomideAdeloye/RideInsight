@@ -801,6 +801,7 @@ function initScene() {
             fog: false,
         })
     );
+    backdrop.name = "__backdrop";
     scene.add(backdrop);
 
     // Camera
@@ -876,6 +877,7 @@ function initScene() {
     scene.add(pool);
 
     buildEnvMap();   // needs scene + renderer both ready
+    loadEnvironment();
     loadModel();
     animate();
 
@@ -948,6 +950,47 @@ function buildEnvMap() {
     scene.environment = pmrem.fromEquirectangular(envTex).texture;
     pmrem.dispose();
     envTex.dispose();
+}
+
+// ── Scene environment (garage / showroom) ──────────────────────────────────
+// Loaded ONCE and kept separate from carModel, so it survives vehicle swaps
+// and is never touched by paint, part-swapping or grounding logic.
+const SCENE_ENV = {
+    glb:      "/static/models/garage.glb",
+    scale:    null,     // null = auto-fit around the car; or set a number
+    rotationY: 0,
+    posY:     0,
+};
+let envModel = null;
+
+function loadEnvironment() {
+    if (!SCENE_ENV.glb) return;
+    const loader = new THREE.GLTFLoader();
+    loader.load(
+        SCENE_ENV.glb,
+        (gltf) => {
+            envModel = gltf.scene;
+            envModel.traverse(node => {
+                if (!node.isMesh) return;
+                node.receiveShadow = true;
+                node.castShadow    = false;   // cheaper; walls don't need to cast
+                const mats = Array.isArray(node.material) ? node.material : [node.material];
+                mats.forEach(m => { if (m) m.envMapIntensity = 0.5; });
+            });
+
+            envModel.rotation.y = SCENE_ENV.rotationY;
+            if (SCENE_ENV.scale) envModel.scale.setScalar(SCENE_ENV.scale);
+            envModel.position.y = SCENE_ENV.posY;
+            scene.add(envModel);
+
+            // A real environment replaces the gradient backdrop
+            const bd = scene.getObjectByName("__backdrop");
+            if (bd) bd.visible = false;
+            console.log("[env] garage loaded");
+        },
+        undefined,
+        () => { /* no garage.glb yet — keep the gradient backdrop */ }
+    );
 }
 
 function loadModel() {
@@ -1031,7 +1074,9 @@ function loadModel() {
             carModel.traverse(node => {
                 if (!node.isMesh || !node.visible || !node.geometry) return;
                 const nm = node.userData.rivasName || effectiveName(node);
-                if (!/Tire|Tyre/i.test(nm)) return;
+                // ONLY the four wheel tires — props like Tire_Stack must not
+                // count, or the car gets lifted to clear them.
+                if (!/^Tire_(FL|FR|BL|BR|RL|RR)\b/i.test(nm)) return;
                 if (!node.geometry.boundingBox) node.geometry.computeBoundingBox();
                 tireBox.union(node.geometry.boundingBox.clone().applyMatrix4(node.matrixWorld));
                 haveTires = true;
