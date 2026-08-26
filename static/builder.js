@@ -1038,6 +1038,13 @@ function loadModel() {
             });
 
             carModel.position.y = -(haveTires ? tireBox.min.y : box.min.y);
+            console.log("[grounding]", {
+                usedTires:   haveTires,
+                tireMinY:    haveTires ? +tireBox.min.y.toFixed(3) : null,
+                boxMinY:     +box.min.y.toFixed(3),
+                appliedY:    +carModel.position.y.toFixed(3),
+                scale:       +scale.toFixed(4),
+            });
 
             scene.add(carModel);
             prepMaterials();
