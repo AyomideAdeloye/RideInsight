@@ -655,6 +655,16 @@ def init_db():
         except Exception:
             pass
 
+    # Waitlist signups from the landing page
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS waitlist (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT NOT NULL UNIQUE,
+            source TEXT DEFAULT 'landing',
+            created_at TEXT DEFAULT ''
+        )
+    """)
+
     # Drafts: unposted composer content
     conn.execute("""
         CREATE TABLE IF NOT EXISTS drafts (
@@ -1574,6 +1584,43 @@ def save_comparison():
 @app.route("/saved")
 def saved():
     return render_template("saved.html")
+
+# ─── Landing page + waitlist ──────────────────────────────────────
+@app.route("/welcome")
+def landing():
+    return render_template("landing.html")
+
+@csrf.exempt
+@app.route("/api/waitlist", methods=["POST"])
+@limiter.limit("10 per hour")
+def api_waitlist():
+    import re as _re
+    data  = request.json or {}
+    email = sanitize(data.get("email", "")).strip().lower()[:200]
+
+    if not _re.match(r"^[^@\s]+@[^@\s]+\.[a-z]{2,}$", email, _re.I):
+        return jsonify({"error": "Enter a valid email address."}), 400
+
+    conn = get_db_connection()
+    try:
+        conn.execute(
+            "INSERT INTO waitlist (email, source, created_at) VALUES (?,?,?)",
+            (email, "landing", datetime.utcnow().strftime("%Y-%m-%d %H:%M"))
+        )
+        conn.commit()
+        msg = "You're on the list. We'll be in touch."
+    except sqlite3.IntegrityError:
+        msg = "You're already on the list."
+    finally:
+        conn.close()
+    return jsonify({"message": msg})
+
+@app.route("/api/waitlist/count")
+def api_waitlist_count():
+    conn = get_db_connection()
+    n = conn.execute("SELECT COUNT(*) FROM waitlist").fetchone()[0]
+    conn.close()
+    return jsonify({"count": n})
 
 # ─── Badges ───────────────────────────────────────────────────────
 @app.route("/badges")

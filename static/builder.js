@@ -151,9 +151,12 @@ const MAZDA6_GJ_CATEGORIES = [
               url: "https://evsportline.com/products/ev112-21-porsche-taycan-wheel-set-of-4" },
             { name: "Wheel_C", label: "SL-C13",      price: 5996,
               url: "https://www.spluxwheels.com/products/sl-c13" },
-            { name: "Wheel_D", label: "Enkei TS-7",  price: 998,
-              url: "https://www.tirerack.com/wheels/WheelCloseUpServlet?target=runWheelSearch&wheelMake=Enkei+Tuning&wheelModel=TS-7&wheelFinish=Matte+Bronze" },
-            { name: "Wheel_E", label: "Track",       price: 2200 },
+            { name: "Wheel_D", label: "Enkei TS-7",  price: 1152,
+              url: "https://www.carid.com/enkei-wheels/ts-7-matte-bronze-6950365539.html" },
+            { name: "Wheel_E", label: "ENKEI Triumph",  price: 1131,
+              url: "https://www.fitmentindustries.com/buy-wheel-offset/543-885-6538ZP/enkei-triumph-18x85-38" },
+            { name: "Wheel_F", label: "ENKEI PF06",     price: 1609,
+              url: "https://www.fitmentindustries.com/buy-wheel-offset/545-790-8035GG/enkei-pf06-17x9-35" },
         ]
     },
     {
@@ -1018,7 +1021,23 @@ function loadModel() {
             const center = box.getCenter(new THREE.Vector3());
             carModel.position.x = -center.x;
             carModel.position.z = -center.z;
-            carModel.position.y = -box.min.y;     // bottom of car on y=0
+
+            // Ground on the TIRES if we have them. Stray/unmatched meshes that
+            // sit below the car would otherwise drag the bounding box down and
+            // leave the car floating.
+            const tireBox = new THREE.Box3();
+            let haveTires = false;
+            carModel.updateMatrixWorld(true);
+            carModel.traverse(node => {
+                if (!node.isMesh || !node.visible || !node.geometry) return;
+                const nm = node.userData.rivasName || effectiveName(node);
+                if (!/Tire|Tyre/i.test(nm)) return;
+                if (!node.geometry.boundingBox) node.geometry.computeBoundingBox();
+                tireBox.union(node.geometry.boundingBox.clone().applyMatrix4(node.matrixWorld));
+                haveTires = true;
+            });
+
+            carModel.position.y = -(haveTires ? tireBox.min.y : box.min.y);
 
             scene.add(carModel);
             prepMaterials();
