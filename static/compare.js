@@ -531,6 +531,19 @@ function synthesizeBoatEntry(make, model, year) {
     };
 }
 
+// Drops null/undefined/""/"N/A" keys so an incomplete API row can be spread
+// over local data without its blanks wiping out the good values.
+function stripEmpty(obj) {
+    const out = {};
+    for (const [k, v] of Object.entries(obj || {})) {
+        if (v === null || v === undefined) continue;
+        const s = String(v).trim();
+        if (s === "" || s.toLowerCase() === "n/a" || s.toLowerCase() === "null") continue;
+        out[k] = v;
+    }
+    return out;
+}
+
 async function searchVehicle(searchText, type = "car") {
     const parts = searchText.trim().split(" ");
     const year  = parts[0];
@@ -572,19 +585,21 @@ async function searchVehicle(searchText, type = "car") {
             if (data && data[0]) apiResult = { ...data[0], _type: "motorcycle" };
         } catch(e) {}
 
-        // If API found data with real specs, use it
-        if (apiResult && (apiResult.type || apiResult.displacement || apiResult.engine)) {
-            return apiResult;
-        }
-
-        // API returned nothing or incomplete data — try local lookup
+        // Always look local up too. The API often returns a row that has
+        // displacement but null power/torque (e.g. Rebel 1100); the old code
+        // returned early on that row, so the local specs were never used.
         const local = searchMotoData(make, model);
-        if (local) {
-            // Merge: local fills gaps in API data (or replaces fully if API returned nothing)
-            return { ...local, year, make: make || local.make, model: model || local.model, _type: "motorcycle" };
-        }
 
-        if (apiResult) return apiResult; // API had at least weight/partial data
+        if (apiResult && local) {
+            return { ...local, ...stripEmpty(apiResult),
+                     year, make: make || local.make, model: model || local.model,
+                     _type: "motorcycle" };
+        }
+        if (apiResult) return apiResult;
+        if (local) {
+            return { ...local, year, make: make || local.make, model: model || local.model,
+                     _type: "motorcycle" };
+        }
         return { year, make, model, _type: "motorcycle", _notFound: true };
     }
 
