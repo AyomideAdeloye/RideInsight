@@ -41,9 +41,21 @@
 
                 <!-- User opponent -->
                 <div id="user-opponent-panel" style="display:none;">
+                    <button class="btn btn-ghost opp-random-btn" onclick="pickRandomOpponent()">
+                        <i data-lucide="shuffle"></i> Surprise me — find a close match
+                    </button>
+
+                    <div class="opp-search-wrap">
+                        <i data-lucide="search"></i>
+                        <input type="text" id="opponentSearch" placeholder="Search by username…"
+                               autocomplete="off" oninput="onOpponentSearch()">
+                    </div>
+
                     <select id="opponentUserSelect" onchange="onOpponentUserChange()">
                         <option value="">— Select a user —</option>
                     </select>
+                    <p class="opp-hint" id="opponentListHint"></p>
+
                     <select id="opponentBuildSelect" style="display:none;" onchange="onOpponentBuildChange()">
                         <option value="">— Select their build —</option>
                     </select>

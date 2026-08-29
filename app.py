@@ -2493,6 +2493,8 @@ def get_builds():
 
 @app.route("/get_build/<int:build_id>")
 def get_build(build_id):
+    if "user_id" not in session:
+        return jsonify({"error": "Not logged in"}), 401
     conn = get_db_connection()
     row = conn.execute("SELECT * FROM builds WHERE id=?", (build_id,)).fetchone()
     conn.close()
@@ -3875,20 +3877,72 @@ def get_race_results():
 
 @app.route("/get_race_users")
 def get_race_users():
+    """Opponents you can pick by name.
+
+    With no query, returns the people you follow who have at least one build —
+    a short, meaningful list. With ?q=, searches every user by username so you
+    can still race someone you don't follow. Never returns the whole user table.
+    """
+    if "user_id" not in session:
+        return jsonify([])
+
+    me = session["user_id"]
+    q  = (request.args.get("q") or "").strip()
+    conn = get_db_connection()
+
+    if q:
+        rows = conn.execute("""
+            SELECT DISTINCT u.id, u.username,
+                   (SELECT COUNT(*) FROM follows f
+                     WHERE f.follower_id = ? AND f.following_id = u.id) AS following
+            FROM users u
+            INNER JOIN builds b ON b.user_id = u.id
+            WHERE u.id != ? AND u.username LIKE ?
+            ORDER BY following DESC, u.username COLLATE NOCASE
+            LIMIT 25
+        """, (me, me, f"%{q}%")).fetchall()
+    else:
+        rows = conn.execute("""
+            SELECT DISTINCT u.id, u.username, 1 AS following
+            FROM users u
+            INNER JOIN builds b ON b.user_id = u.id
+            INNER JOIN follows f ON f.following_id = u.id
+            WHERE f.follower_id = ? AND u.id != ?
+            ORDER BY u.username COLLATE NOCASE
+            LIMIT 50
+        """, (me, me)).fetchall()
+
+    conn.close()
+    return jsonify([dict(r) for r in rows])
+
+
+@app.route("/get_random_opponent")
+def get_random_opponent():
+    """A pool of random rival builds for the 'Surprise me' button.
+
+    Returns full build rows so the client can score them with the same
+    calcStats() the race physics uses and pick the closest match — keeping
+    all performance maths in one place instead of duplicating it here.
+    """
     if "user_id" not in session:
         return jsonify([])
     conn = get_db_connection()
-    # Users who have saved builds, excluding self
     rows = conn.execute("""
-        SELECT DISTINCT u.id, u.username FROM users u
-        INNER JOIN builds b ON b.user_id = u.id
-        WHERE u.id != ?
+        SELECT b.*, u.username
+        FROM builds b
+        INNER JOIN users u ON u.id = b.user_id
+        WHERE b.user_id != ?
+        ORDER BY RANDOM()
+        LIMIT 25
     """, (session["user_id"],)).fetchall()
     conn.close()
     return jsonify([dict(r) for r in rows])
 
+
 @app.route("/get_user_builds/<int:user_id>")
 def get_user_builds(user_id):
+    if "user_id" not in session:
+        return jsonify({"error": "Not logged in"}), 401
     conn = get_db_connection()
     rows = conn.execute(
         "SELECT id, name, base_year, base_make, base_model FROM builds WHERE user_id=? ORDER BY id DESC",

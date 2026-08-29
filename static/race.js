@@ -489,10 +489,20 @@ function onAIDifficultyChange() {
     checkReady();
 }
 
-async function loadUserList() {
-    const res  = await fetch("/get_race_users");
-    const users = await res.json();
+// With no query this lists people you follow who have builds. Typing searches
+// everyone, so you can still race someone you don't follow.
+async function loadUserList(query = "") {
     const sel  = document.getElementById("opponentUserSelect");
+    const hint = document.getElementById("opponentListHint");
+    if (!sel) return;
+
+    let users = [];
+    try {
+        const url = query ? `/get_race_users?q=${encodeURIComponent(query)}` : "/get_race_users";
+        const res = await fetch(url);
+        if (res.ok) users = await res.json();
+    } catch (e) { /* leave the list empty and fall through to the hint */ }
+
     sel.innerHTML = `<option value="">— Select a user —</option>`;
     users.forEach(u => {
         const opt = document.createElement("option");
@@ -500,6 +510,82 @@ async function loadUserList() {
         opt.textContent = `@${u.username}`;
         sel.appendChild(opt);
     });
+
+    if (hint) {
+        if (users.length)      hint.textContent = query ? "" : "People you follow.";
+        else if (query)        hint.textContent = "No users found with that name.";
+        else                   hint.textContent = "You're not following anyone with a saved build yet — search by username, or hit Surprise me.";
+    }
+}
+
+let searchTimer = null;
+function onOpponentSearch() {
+    clearTimeout(searchTimer);
+    const q = document.getElementById("opponentSearch").value.trim();
+    searchTimer = setTimeout(() => loadUserList(q), 250);
+}
+
+// Pulls a random pool and picks whichever build is closest in performance to
+// the player's, so the race is competitive instead of a blowout.
+async function pickRandomOpponent() {
+    if (!playerBuild) {
+        alert("Pick your own build first so we can find you a fair match.");
+        return;
+    }
+
+    let pool = [];
+    try {
+        const res = await fetch("/get_random_opponent");
+        if (res.ok) pool = await res.json();
+    } catch (e) { /* handled by the empty check below */ }
+
+    if (!pool.length) {
+        const hint = document.getElementById("opponentListHint");
+        if (hint) hint.textContent = "No other builds on the platform yet — race the AI for now.";
+        return;
+    }
+
+    const myScore = perfScore(calcStats(playerBuild));
+    let best = null, bestGap = Infinity;
+
+    pool.forEach(row => {
+        let parts = [];
+        try { parts = JSON.parse(row.parts_json || "[]"); } catch (e) {}
+        const cand = { ...row, parts, carColor: row.car_color || "#ef4444" };
+        const gap  = Math.abs(perfScore(calcStats(cand)) - myScore);
+        if (gap < bestGap) { bestGap = gap; best = cand; }
+    });
+
+    opponentBuild = best;
+
+    // Reflect the pick in the dropdowns so it's clear who you drew
+    const userSel = document.getElementById("opponentUserSelect");
+    if (userSel && best.username && !Array.from(userSel.options).some(o => o.value == best.user_id)) {
+        const opt = document.createElement("option");
+        opt.value = best.user_id;
+        opt.textContent = `@${best.username}`;
+        userSel.appendChild(opt);
+    }
+    if (userSel) userSel.value = best.user_id;
+
+    const buildSel = document.getElementById("opponentBuildSelect");
+    if (buildSel) {
+        buildSel.innerHTML = `<option value="${best.id}">${esc(best.name || "Build #" + best.id)}</option>`;
+        buildSel.style.display = "block";
+    }
+
+    const preview = document.getElementById("opponentBuildPreview");
+    if (preview) {
+        preview.innerHTML = buildPreviewHTML(opponentBuild, calcStats(opponentBuild));
+        preview.style.display = "block";
+    }
+    if (window.refreshIcons) window.refreshIcons();
+    checkReady();
+}
+
+// Single number standing in for straight-line pace, used only for matchmaking.
+function perfScore(s) {
+    return (s.hp / s.weight) + s.nitro * 20;
 }
 
 async function onOpponentUserChange() {

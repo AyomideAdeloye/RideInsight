@@ -1809,6 +1809,28 @@ input, textarea, select { font-family: var(--font); }
 }
 .opp-tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
 
+/* Opponent picker: random match + username search */
+.opp-random-btn {
+    width: 100%; justify-content: center; margin-bottom: 10px;
+    font-size: 13px; font-weight: 600;
+}
+.opp-search-wrap { position: relative; margin-bottom: 10px; }
+.opp-search-wrap i {
+    position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+    width: 15px; height: 15px; color: var(--text-muted); pointer-events: none;
+}
+.opp-search-wrap input {
+    width: 100%; padding: 9px 12px 9px 32px; border: 1px solid var(--border);
+    border-radius: 8px; font-size: 14px; background: var(--bg);
+    outline: none; color: var(--text);
+}
+.opp-search-wrap input:focus { border-color: var(--accent); }
+.opp-hint {
+    font-size: 12px; color: var(--text-muted); line-height: 1.4;
+    margin: -4px 0 10px;
+}
+.opp-hint:empty { display: none; }
+
 /* Build Preview */
 .build-preview { margin-top: 10px; padding: 12px; background: var(--bg); border-radius: 8px; }
 .build-preview-name { font-weight: 700; font-size: 14px; margin-bottom: 2px; }
