@@ -5405,7 +5405,7 @@ html.dark-mode.scheme-blue   { --accent-light: #1e3a5f; }
     right: 0;
     bottom: 0;
     display: none;               /* toggled by JS during a race */
-    justify-content: space-between;
+    justify-content: flex-end;   /* drag race: pedals on the right only */
     align-items: flex-end;
     padding: 14px 16px 18px;
     pointer-events: none;        /* only the buttons capture touches */

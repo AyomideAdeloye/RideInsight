@@ -1,10 +1,10 @@
 // ═══════════════════════════════════════════════════════════════
 //  RideInsight Race Engine
-//  Drag Race + Track Race | Player vs AI + Player vs User Build
+//  Drag Race | Player vs AI + Player vs User Build
 // ═══════════════════════════════════════════════════════════════
 
 // ─── State ────────────────────────────────────────────────────────
-let raceMode       = "drag";   // "drag" | "track"
+const raceMode     = "drag";   // Drag is the only mode. Track Race removed pre-launch.
 let opponentType   = "ai";     // "ai"   | "user"
 let playerBuild    = null;
 let opponentBuild  = null;
@@ -46,7 +46,7 @@ const AI_BUILDS = {
         carColor: "#8e44ad"
     },
     insane: {
-        name: "Track Monster",
+        name: "Street Monster",
         car: "2021 Dodge Charger",
         parts: [
             { name:"Supercharger Kit", cost:4500, effect:"turbo" },
@@ -398,233 +398,6 @@ function drawDrag(ctx, W, H) {
     }
 }
 
-// ─── Track Race Engine ────────────────────────────────────────────
-let track = {};
-const LAPS_TOTAL = 3;
-
-function initTrack(pBuild, oBuild) {
-    const pStats = calcStats(pBuild);
-    const oStats = calcStats(oBuild);
-    const CIRCUIT_LEN = 1000;
-
-    track = {
-        circuitLen: CIRCUIT_LEN,
-        player: { dist:0, vel:0, angle:0, stats:pStats, color:getBuildColor(pBuild), name:getBuildDisplayName(pBuild), laps:0, lapTime:0, bestLap:Infinity, nitroLeft:pStats.nitro*3, nitroActive:false, finished:false, totalTime:0 },
-        opp:    { dist:0, vel:0, angle:0, stats:oStats, color:getBuildColor(oBuild), name:getBuildDisplayName(oBuild), laps:0, lapTime:0, bestLap:Infinity, nitroLeft:oStats.nitro*3, nitroActive:false, finished:false, totalTime:0 },
-        countdown: 3,
-        countdownTimer: 0,
-        started: false,
-        done: false,
-        elapsed: 0,
-        keys: {},
-        camAngle: 0,
-    };
-}
-
-// Track path — oval circuit with corners
-function getTrackPoint(t) {
-    const cx = 0, cy = 0;
-    const rx = 280, ry = 160;
-    const angle = t * Math.PI * 2;
-    // Tangent direction: derivative of ellipse path
-    const tx = -Math.sin(angle) * rx;
-    const ty =  Math.cos(angle) * ry;
-    const tangent = Math.atan2(ty, tx);
-    return {
-        x: cx + Math.cos(angle) * rx,
-        y: cy + Math.sin(angle) * ry,
-        angle: tangent   // car faces along tangent
-    };
-}
-
-function updateTrack(dt) {
-    if (track.done) return;
-
-    if (!track.started) {
-        track.countdownTimer += dt;
-        if (track.countdownTimer >= 1) {
-            track.countdown--;
-            track.countdownTimer = 0;
-            if (track.countdown <= 0) track.started = true;
-        }
-        return;
-    }
-
-    track.elapsed += dt;
-
-    function updateRacer(r, isPlayer, keys) {
-        if (r.finished) return;
-        r.lapTime += dt;
-
-        const t = (r.dist % track.circuitLen) / track.circuitLen;
-        const ahead = ((r.dist + 20) % track.circuitLen) / track.circuitLen;
-        const p0 = getTrackPoint(t);
-        const p1 = getTrackPoint(ahead);
-        // Normalize the angle delta to [-PI, PI] — without this the atan2 wrap
-        // point registered as a huge "corner" every lap
-        let dAng = p1.angle - p0.angle;
-        while (dAng >  Math.PI) dAng -= Math.PI * 2;
-        while (dAng < -Math.PI) dAng += Math.PI * 2;
-        const corner = Math.abs(dAng);
-        // The circuit is an ellipse, so it curves everywhere. The old 0.05
-        // threshold was true at every point, which made the AI permanently
-        // "in a corner" — it never accelerated and sat still on the line.
-        const inCorner = corner > 0.11;
-
-        const maxVel   = inCorner
-            ? (0.3 + r.stats.handling / 400)
-            : (0.5 + r.stats.hp / 600);
-        const accelF   = 0.006 + r.stats.hp / 100000;
-
-        let accel, brake, nitro;
-        if (isPlayer) {
-            accel = keys["ArrowUp"]   || keys["w"] || keys["W"];
-            brake = keys["ArrowDown"] || keys["s"] || keys["S"];
-            nitro = keys[" "] && r.nitroLeft > 0;
-        } else {
-            // AI drives to its speed limit rather than toggling on "corner",
-            // so it always gets moving (maxVel already drops in corners).
-            accel = r.vel < maxVel * 0.98;
-            brake = r.vel > maxVel * 1.06;
-            nitro = r.nitroLeft > 0 && !inCorner && Math.random() < 0.015;
-        }
-
-        r.nitroActive = nitro && r.nitroLeft > 0;
-        const boost = r.nitroActive ? 1.5 : 1.0;
-        if (r.nitroActive) r.nitroLeft = Math.max(0, r.nitroLeft - dt * 2);
-
-        // Nitro alone is enough to pull — no need to also hold accelerate
-        if (accel || r.nitroActive) r.vel = Math.min(maxVel * boost, r.vel + accelF * boost);
-        else if (brake)             r.vel = Math.max(0, r.vel - 0.012 * (r.stats.braking / 50));
-        else                        r.vel = Math.max(0, r.vel - 0.004);
-
-        const prevDist = r.dist;
-        r.dist += r.vel * dt * 60;
-
-        // Lap crossing
-        const prevLap = Math.floor(prevDist / track.circuitLen);
-        const currLap = Math.floor(r.dist / track.circuitLen);
-        if (currLap > prevLap) {
-            r.bestLap = Math.min(r.bestLap, r.lapTime);
-            r.lapTime = 0;
-            r.laps = currLap;
-            if (r.laps >= LAPS_TOTAL) {
-                r.finished  = true;
-                r.totalTime = track.elapsed;
-            }
-        }
-        r.angle = getTrackPoint((r.dist % track.circuitLen) / track.circuitLen).angle;
-    }
-
-    updateRacer(track.player, true, track.keys);
-    updateRacer(track.opp,    false, {});
-
-    if (track.player.finished && track.opp.finished) track.done = true;
-
-    // HUD
-    const mph = Math.round(track.player.vel * 200);
-    document.getElementById("hudSpeed").textContent = mph;
-    document.getElementById("hudTime").textContent  = track.elapsed.toFixed(2);
-    document.getElementById("hudLap").textContent   = `${Math.min(track.player.laps + 1, LAPS_TOTAL)}/${LAPS_TOTAL}`;
-}
-
-function drawTrack(ctx, W, H) {
-    ctx.fillStyle = "#0f1a0f";
-    ctx.fillRect(0, 0, W, H);
-
-    const cx = W/2, cy = H/2;
-    const rx = W * 0.38, ry = H * 0.32;
-
-    // Track surface
-    ctx.strokeStyle = "#3d3d3d";
-    ctx.lineWidth = 52;
-    ctx.beginPath();
-    ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
-    ctx.stroke();
-
-    // Track asphalt
-    ctx.strokeStyle = "#555";
-    ctx.lineWidth = 48;
-    ctx.beginPath();
-    ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
-    ctx.stroke();
-
-    // Lane markings
-    ctx.strokeStyle = "rgba(255,255,255,0.15)";
-    ctx.lineWidth = 2;
-    ctx.setLineDash([20, 15]);
-    ctx.beginPath();
-    ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.setLineDash([]);
-
-    // Start/finish line
-    ctx.fillStyle = "#fff";
-    ctx.fillRect(cx + rx - 26, cy - 28, 4, 56);
-
-    // Checkered start
-    for (let i = 0; i < 4; i++) {
-        ctx.fillStyle = i % 2 === 0 ? "#fff" : "#000";
-        ctx.fillRect(cx + rx - 26, cy - 28 + i * 14, 4, 14);
-    }
-
-    // Grass / infield
-    ctx.fillStyle = "#1a3a1a";
-    ctx.beginPath();
-    ctx.ellipse(cx, cy, rx - 30, ry - 30, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Trees / decoration
-    for (let i = 0; i < 12; i++) {
-        const angle = (i / 12) * Math.PI * 2;
-        const tx = cx + Math.cos(angle) * (rx - 60);
-        const ty = cy + Math.sin(angle) * (ry - 60);
-        ctx.fillStyle = "#2d5a2d";
-        ctx.beginPath();
-        ctx.arc(tx, ty, 8, 0, Math.PI * 2);
-        ctx.fill();
-    }
-
-    // Draw racers
-    [track.player, track.opp].forEach((r, idx) => {
-        const t        = ((r.dist + idx * 10) % track.circuitLen) / track.circuitLen;
-        const pos      = getTrackPoint(t);
-        const x        = cx + pos.x * (rx / 280);
-        const y        = cy + pos.y * (ry / 160);
-        const isPlayer = idx === 0;
-        drawSportsCar(ctx, x, y, pos.angle, r.color, r.nitroActive, 0.52, isPlayer);
-
-        // Name tag
-        ctx.fillStyle = isPlayer ? "#60a5fa" : "#f87171";
-        ctx.font = "bold 9px Inter, Arial";
-        ctx.textAlign = "center";
-        ctx.fillText(isPlayer ? "YOU" : "OPP", x, y - 20);
-    });
-
-    // Countdown
-    if (!track.started) {
-        ctx.fillStyle = "rgba(0,0,0,0.65)";
-        ctx.fillRect(0, 0, W, H);
-        const txt = track.countdown > 0 ? String(track.countdown) : "GO!";
-        ctx.font   = `bold ${track.countdown > 0 ? 90 : 75}px Inter, Arial`;
-        ctx.fillStyle   = track.countdown > 0 ? "#ff4444" : "#44ff44";
-        ctx.textAlign   = "center";
-        ctx.fillText(txt, W/2, H/2 + 30);
-    }
-
-    // Lap indicators (dots around track)
-    [track.player, track.opp].forEach((r, idx) => {
-        const lapFrac = (r.dist % track.circuitLen) / track.circuitLen;
-        const pp = getTrackPoint(lapFrac);
-        const lx = cx + pp.x * (rx / 280) + (idx === 0 ? -35 : 35);
-        const ly = 20 + idx * 20;
-        ctx.fillStyle = r.color;
-        ctx.fillRect(lx - 30, ly, 60 * Math.min(r.laps / LAPS_TOTAL + lapFrac / LAPS_TOTAL, 1), 6);
-        ctx.strokeStyle = r.color;
-        ctx.lineWidth = 1;
-        ctx.strokeRect(lx - 30, ly, 60, 6);
-    });
-}
 
 // ─── Main Loop ────────────────────────────────────────────────────
 let lastTime = 0;
@@ -640,15 +413,9 @@ function gameLoop(ts) {
 
     ctx.clearRect(0, 0, W, H);
 
-    if (raceMode === "drag") {
-        updateDrag(dt);
-        drawDrag(ctx, W, H);
-        if (drag.done) { raceRunning = false; showDragResults(); return; }
-    } else {
-        updateTrack(dt);
-        drawTrack(ctx, W, H);
-        if (track.done) { raceRunning = false; showTrackResults(); return; }
-    }
+    updateDrag(dt);
+    drawDrag(ctx, W, H);
+    if (drag.done) { raceRunning = false; showDragResults(); return; }
 
     animFrame = requestAnimationFrame(gameLoop);
 }
@@ -661,17 +428,6 @@ function showDragResults() {
         "Opp time":    o.finished ? o.time.toFixed(3) + "s" : "DNF",
         "Top speed":   Math.round(Math.max(...Array.from({length:10}, () => drag.player.vel) ) * 200) + " mph",
         "Distance":    "¼ mile (400m)",
-    });
-}
-
-function showTrackResults() {
-    const p = track.player, o = track.opp;
-    const playerWon = p.totalTime <= o.totalTime;
-    finishRace(playerWon, {
-        "Your time":    p.totalTime.toFixed(2) + "s",
-        "Opp time":     o.totalTime.toFixed(2) + "s",
-        "Your best lap": p.bestLap === Infinity ? "N/A" : p.bestLap.toFixed(2) + "s",
-        "Laps":          LAPS_TOTAL,
     });
 }
 
@@ -711,20 +467,6 @@ async function finishRace(playerWon, stats) {
 }
 
 // ─── Setup UI ─────────────────────────────────────────────────────
-function switchMode(mode) {
-    raceMode = mode;
-    document.querySelectorAll(".race-tab").forEach(t => t.classList.remove("active"));
-    const tabEl = document.getElementById(`tab-${mode}`);
-    if (tabEl) tabEl.classList.add("active");
-    const steerHint  = document.getElementById("steerHint");
-    const hudLapWrap = document.getElementById("hudLapWrap");
-    const hudMode    = document.getElementById("hudMode");
-    if (steerHint)  steerHint.style.display  = mode === "track" ? "inline" : "none";
-    if (hudLapWrap) hudLapWrap.style.display  = mode === "track" ? "flex"   : "none";
-    if (hudMode)    hudMode.textContent       = mode === "drag"  ? "DRAG"   : "TRACK";
-    checkReady();
-}
-
 function switchOpponent(type) {
     opponentType = type;
     document.querySelectorAll(".opp-tab").forEach(t => t.classList.remove("active"));
@@ -864,11 +606,9 @@ function startRace() {
     document.getElementById("raceResults").style.display      = "none";
     document.getElementById("raceHud").style.display          = "flex";
     document.getElementById("raceControlsHint").style.display = "flex";
-    document.getElementById("steerHint").style.display        = raceMode === "track" ? "inline" : "none";
     setTouchControlsVisible(true);
 
-    if (raceMode === "drag")  initDrag(playerBuild, opponentBuild);
-    else                      initTrack(playerBuild, opponentBuild);
+    initDrag(playerBuild, opponentBuild);
 
     raceRunning = true;
     lastTime    = performance.now();
@@ -914,12 +654,10 @@ async function loadLeaderboard() {
 document.addEventListener("keydown", e => {
     if (!raceRunning) return;
     if (e.key === " ") e.preventDefault();
-    if (raceMode === "drag")  drag.keys[e.key]  = true;
-    else                      track.keys[e.key] = true;
+    drag.keys[e.key] = true;
 });
 document.addEventListener("keyup", e => {
-    if (raceMode === "drag")  drag.keys[e.key]  = false;
-    else                      track.keys[e.key] = false;
+    drag.keys[e.key] = false;
 });
 
 function esc(s) {
@@ -938,14 +676,15 @@ document.addEventListener("DOMContentLoaded", () => {
     loadUserList();
     onAIDifficultyChange();
     loadLeaderboard();
-    switchMode("drag");
+    const hudMode = document.getElementById("hudMode");
+    if (hudMode) hudMode.textContent = "DRAG";
+    checkReady();
 });
 // ─── Touch controls (mobile) ──────────────────────────────────────
 // Feeds the same key map the keyboard handler uses, so race physics
 // needs no changes — a held button behaves exactly like a held key.
 function setKey(key, down) {
-    if (raceMode === "drag") drag.keys[key]  = down;
-    else                     track.keys[key] = down;
+    drag.keys[key] = down;
 }
 
 function initTouchControls() {
@@ -982,9 +721,6 @@ function setTouchControlsVisible(visible) {
     const wrap = document.getElementById("raceTouchControls");
     if (!wrap) return;
     wrap.style.display = visible ? "flex" : "none";
-    const steerGroup = document.getElementById("rtcSteerGroup");
-    // Steering only matters in track mode
-    if (steerGroup) steerGroup.style.visibility = (raceMode === "track") ? "visible" : "hidden";
 }
 
 document.addEventListener("DOMContentLoaded", initTouchControls);

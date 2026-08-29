@@ -852,6 +852,7 @@ function initScene() {
     );
     ground.rotation.x = -Math.PI / 2;
     ground.receiveShadow = true;
+    ground.name = "__ground";
     scene.add(ground);
 
     // Soft lit pool under the car so the floor doesn't read as endless flat grey
@@ -874,6 +875,7 @@ function initScene() {
     );
     pool.rotation.x = -Math.PI / 2;
     pool.position.y = 0.002;
+    pool.name = "__pool";
     scene.add(pool);
 
     buildEnvMap();   // needs scene + renderer both ready
@@ -956,10 +958,15 @@ function buildEnvMap() {
 // Loaded ONCE and kept separate from carModel, so it survives vehicle swaps
 // and is never touched by paint, part-swapping or grounding logic.
 const SCENE_ENV = {
-    glb:      "/static/models/garage.glb",
-    scale:    null,     // null = auto-fit around the car; or set a number
-    rotationY: 0,
-    posY:     0,
+    glb:       "/static/models/garage.glb",
+    // null = auto-fit (scales so the bay is `fitDepth` units deep and its
+    // floor sits on y=0). Set a number to override manually.
+    scale:     null,
+    fitDepth:  22,      // car is 7 units long, so ~3 car-lengths of bay
+    rotationY: 0,       // radians — spin the garage to face the camera
+    offsetX:   0,       // manual nudge after auto-fit
+    offsetY:   0,
+    offsetZ:   -2,      // push the back wall away from the car
 };
 let envModel = null;
 
@@ -967,7 +974,7 @@ function loadEnvironment() {
     if (!SCENE_ENV.glb) return;
     const loader = new THREE.GLTFLoader();
     loader.load(
-        SCENE_ENV.glb,
+        SCENE_ENV.glb + "?v=" + Date.now(),
         (gltf) => {
             envModel = gltf.scene;
             envModel.traverse(node => {
@@ -979,14 +986,60 @@ function loadEnvironment() {
             });
 
             envModel.rotation.y = SCENE_ENV.rotationY;
-            if (SCENE_ENV.scale) envModel.scale.setScalar(SCENE_ENV.scale);
-            envModel.position.y = SCENE_ENV.posY;
+
+            // ── Auto-fit: scale the bay around the car, then sit it on y=0 ──
+            envModel.updateMatrixWorld(true);
+            let box  = new THREE.Box3().setFromObject(envModel);
+            let size = box.getSize(new THREE.Vector3());
+
+            const scale = SCENE_ENV.scale
+                ? SCENE_ENV.scale
+                : (Math.max(size.x, size.z) > 0
+                    ? SCENE_ENV.fitDepth / Math.max(size.x, size.z)
+                    : 1);
+            envModel.scale.setScalar(scale);
+            envModel.updateMatrixWorld(true);
+
+            // Re-measure after scaling, then centre on the car and drop the
+            // floor to ground level.
+            box = new THREE.Box3().setFromObject(envModel);
+            const c = box.getCenter(new THREE.Vector3());
+            envModel.position.x += -c.x + SCENE_ENV.offsetX;
+            envModel.position.z += -c.z + SCENE_ENV.offsetZ;
+
+            // Ground on the FLOOR mesh if we can find one. Walls or props that
+            // dip below floor level would otherwise lift the whole garage.
+            const floorBox = new THREE.Box3();
+            let haveFloor = false;
+            envModel.traverse(node => {
+                if (!node.isMesh || !node.geometry) return;
+                if (!/Plane|Floor|Ground/i.test(node.name || "")) return;
+                if (!node.geometry.boundingBox) node.geometry.computeBoundingBox();
+                floorBox.union(node.geometry.boundingBox.clone().applyMatrix4(node.matrixWorld));
+                haveFloor = true;
+            });
+            const groundY = haveFloor ? floorBox.min.y : box.min.y;
+            envModel.position.y += -groundY + SCENE_ENV.offsetY;
+
             scene.add(envModel);
 
-            // A real environment replaces the gradient backdrop
-            const bd = scene.getObjectByName("__backdrop");
-            if (bd) bd.visible = false;
-            console.log("[env] garage loaded");
+            const finalSize = new THREE.Box3().setFromObject(envModel).getSize(new THREE.Vector3());
+            const finalBox = new THREE.Box3().setFromObject(envModel);
+            console.log("[env] garage fitted", {
+                scale:      +scale.toFixed(3),
+                usedFloor:  haveFloor,
+                size:       { w: +finalSize.x.toFixed(1), h: +finalSize.y.toFixed(1), d: +finalSize.z.toFixed(1) },
+                bottomY:    +finalBox.min.y.toFixed(2),   // should be ~0 (or slightly below)
+                topY:       +finalBox.max.y.toFixed(2),
+            });
+
+            // The garage brings its own floor and walls, so hide the studio
+            // backdrop AND the built-in ground plane — two coplanar floors at
+            // y=0 z-fight and flicker.
+            ["__backdrop", "__ground", "__pool"].forEach(n => {
+                const o = scene.getObjectByName(n);
+                if (o) o.visible = false;
+            });
         },
         undefined,
         () => { /* no garage.glb yet — keep the gradient backdrop */ }
@@ -1000,8 +1053,10 @@ function loadModel() {
 
     if (overlay) overlay.style.display = "flex";
 
+    // Cache-bust so a freshly exported GLB always loads instead of the
+    // browser's cached copy.
     loader.load(
-        VEHICLES[currentVehicleKey].glb,
+        VEHICLES[currentVehicleKey].glb + "?v=" + Date.now(),
         (gltf) => {
             carModel = gltf.scene;
 
