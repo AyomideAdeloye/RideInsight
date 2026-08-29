@@ -336,9 +336,13 @@ function buildVsStats(c1, c2, type = "car") {
         const max = Math.max(v1n, v2n, 1);
         const p1  = Math.round((v1n / max) * 100);
         const p2  = Math.round((v2n / max) * 100);
-        const winner = higherIsBetter
-            ? (v1n > v2n ? 1 : v2n > v1n ? 2 : 0)
-            : (v1n < v2n ? 1 : v2n < v1n ? 2 : 0);
+        // Only crown a winner when both sides actually have the spec. Beating a
+        // missing value isn't a win — it just means we have no data to compare.
+        const bothKnown = v1n > 0 && v2n > 0;
+        const winner = !bothKnown ? 0
+            : higherIsBetter
+                ? (v1n > v2n ? 1 : v2n > v1n ? 2 : 0)
+                : (v1n < v2n ? 1 : v2n < v1n ? 2 : 0);
 
         return `
         <div class="vs-stat-row">
@@ -810,7 +814,8 @@ function estimateCosts(v, type) {
         const make = (v.make || "").toLowerCase();
         const disp = parseInt(v.displacement) || 600;
 
-        const premiumBrands = ["ducati","bmw","triumph","aprilia","mv agusta"];
+        const premiumBrands = ["ducati","bmw","triumph","aprilia","mv agusta",
+                               "harley","indian","moto guzzi"];
         const budgetBrands  = ["royal enfield","ktm","kawasaki","yamaha","honda","suzuki"];
 
         if (premiumBrands.some(b => make.includes(b))) price = 16000;

@@ -5089,11 +5089,13 @@ html.dark-mode.scheme-blue   { --accent-light: #1e3a5f; }
 }
 .vs-bar-left  { display: flex; justify-content: flex-end; }
 .vs-bar-right { display: flex; justify-content: flex-start; }
+/* The fill must contrast with the track it sits in — when both were
+   var(--border) the losing side's bar was invisible and the row looked empty. */
 .vs-bar-fill-left, .vs-bar-fill-right {
-    height: 100%; background: var(--border); border-radius: 4px;
-    transition: width 0.5s ease;
+    height: 100%; background: var(--text-muted); opacity: 0.45;
+    border-radius: 4px; transition: width 0.5s ease;
 }
-.vs-fill-win { background: var(--accent) !important; }
+.vs-fill-win { background: var(--accent) !important; opacity: 1; }
 .vs-stat-label {
     font-size: 10px; font-weight: 700; text-transform: uppercase;
     letter-spacing: 0.5px; color: var(--text-muted); white-space: nowrap;
