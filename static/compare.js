@@ -322,14 +322,17 @@ function showSVGFallback(box, type) {
 
 
 
-function buildVsStats(c1, c2) {
+function buildVsStats(c1, c2, type = "car") {
     const n1 = `${c1.year} ${c1.make} ${c1.model}`;
     const n2 = `${c2.year} ${c2.make} ${c2.model}`;
 
-    const statRow = (label, val1, val2, unit = "", higherIsBetter = true) => {
+    // `fmt` formats the printed value only — bar widths always use the raw
+    // number, so currency strings like "$28,500" don't break the scaling.
+    const statRow = (label, val1, val2, unit = "", higherIsBetter = true, fmt = null) => {
         if (!val1 && !val2) return "";
         const v1n = parseFloat(val1) || 0;
         const v2n = parseFloat(val2) || 0;
+        if (fmt) { val1 = val1 ? fmt(val1) : ""; val2 = val2 ? fmt(val2) : ""; }
         const max = Math.max(v1n, v2n, 1);
         const p1  = Math.round((v1n / max) * 100);
         const p2  = Math.round((v2n / max) * 100);
@@ -349,10 +352,51 @@ function buildVsStats(c1, c2) {
         </div>`;
     };
 
-    const hp1   = parseInt(c1.horsepower) || (c1.cylinders ? c1.cylinders * 55 : 0);
-    const hp2   = parseInt(c2.horsepower) || (c2.cylinders ? c2.cylinders * 55 : 0);
-    const costs1 = estimateCosts(c1, "car");
-    const costs2 = estimateCosts(c2, "car");
+    const costs1 = estimateCosts(c1, type);
+    const costs2 = estimateCosts(c2, type);
+    const annual = c => (c.insurance + c.fuelPerYear + c.maintenancePerYear) || "";
+
+    // Shared money rows — every vehicle type ends with the same two.
+    const costRows = `
+        ${statRow("Est. Value",  costs1.price || "", costs2.price || "", "", false, money)}
+        ${statRow("Annual Cost", annual(costs1), annual(costs2), "", false, money)}`;
+
+    let rows = "";
+
+    if (type === "motorcycle") {
+        // Local dataset stores "92 HP @ 12,000 RPM" / "64 Nm @ 8,500 RPM";
+        // the API returns bare numbers. leadingNum() handles both.
+        const hp1 = leadingNum(c1.power), hp2 = leadingNum(c2.power);
+        const kg1 = leadingNum(c1.weight_kg || c1.total_weight);
+        const kg2 = leadingNum(c2.weight_kg || c2.total_weight);
+        // Power-to-weight is what actually separates two bikes on paper.
+        const pw1 = hp1 && kg1 ? Math.round(hp1 / (kg1 / 1000)) : 0;
+        const pw2 = hp2 && kg2 ? Math.round(hp2 / (kg2 / 1000)) : 0;
+
+        rows = `
+        ${statRow("Power",        hp1 || "", hp2 || "", " hp")}
+        ${statRow("Torque",       leadingNum(c1.torque) || "", leadingNum(c2.torque) || "", " Nm")}
+        ${statRow("Displacement", leadingNum(c1.displacement) || "", leadingNum(c2.displacement) || "", " cc")}
+        ${statRow("Weight",       kg1 || "", kg2 || "", " kg", false)}
+        ${statRow("Power/Weight", pw1 || "", pw2 || "", " hp/t")}`;
+    }
+
+    else if (type === "boat") {
+        rows = `
+        ${statRow("Horsepower", leadingNum(c1.horsepower) || "", leadingNum(c2.horsepower) || "", " hp")}
+        ${statRow("Length",     leadingNum(c1.length_ft) || "", leadingNum(c2.length_ft) || "", " ft")}
+        ${statRow("Beam",       leadingNum(c1.beam_ft) || "", leadingNum(c2.beam_ft) || "", " ft")}
+        ${statRow("Capacity",   leadingNum(c1.capacity_persons) || "", leadingNum(c2.capacity_persons) || "", " ppl")}`;
+    }
+
+    else {
+        const hp1 = parseInt(c1.horsepower) || (c1.cylinders ? c1.cylinders * 55 : 0);
+        const hp2 = parseInt(c2.horsepower) || (c2.cylinders ? c2.cylinders * 55 : 0);
+        rows = `
+        ${statRow("Horsepower",   hp1 || "", hp2 || "", " hp")}
+        ${statRow("Displacement", c1.displacement || "", c2.displacement || "", "L")}
+        ${statRow("Cylinders",    c1.cylinders || "", c2.cylinders || "", " cyl")}`;
+    }
 
     return `
     <div class="vs-stats-section">
@@ -361,13 +405,23 @@ function buildVsStats(c1, c2) {
             <span class="vs-badge">HEAD TO HEAD</span>
             <span class="vs-name-right">${n2}</span>
         </div>
-        ${statRow("Horsepower", hp1 || "", hp2 || "", " hp")}
-        ${statRow("Displacement", c1.displacement || "", c2.displacement || "", "L")}
-        ${statRow("Cylinders", c1.cylinders || "", c2.cylinders || "", " cyl")}
-        ${statRow("Est. Value", costs1.price || "", costs2.price || "", "", false)}
-        ${statRow("Annual Cost", (costs1.insurance + costs1.fuelPerYear + costs1.maintenancePerYear) || "",
-                                 (costs2.insurance + costs2.fuelPerYear + costs2.maintenancePerYear) || "", "", false)}
+        ${rows}
+        ${costRows}
     </div>`;
+}
+
+// Pulls the first number out of a spec string: "92 HP @ 12,000 RPM" -> 92,
+// "204.0 kg" -> 204. Returns 0 when there's nothing usable.
+function leadingNum(val) {
+    if (val === null || val === undefined) return 0;
+    if (typeof val === "number") return val;
+    const m = String(val).match(/-?\d+(\.\d+)?/);
+    return m ? parseFloat(m[0]) : 0;
+}
+
+function money(n) {
+    const v = parseFloat(n) || 0;
+    return v ? "$" + v.toLocaleString() : "";
 }
 
 async function compareCars(v1Override, v2Override) {
@@ -390,8 +444,8 @@ async function compareCars(v1Override, v2Override) {
     ]);
     const similarities = buildSimilarities(v1, v2, type);
 
-    const vsSection = (type === "car" && v1 && v2 && !v1._notFound && !v2._notFound)
-        ? buildVsStats(v1, v2) : "";
+    const vsSection = (v1 && v2 && !v1._notFound && !v2._notFound)
+        ? buildVsStats(v1, v2, type) : "";
 
     results.innerHTML = `
         <div class="comparison-layout">
@@ -763,7 +817,9 @@ function estimateCosts(v, type) {
         else if (budgetBrands.some(b => make.includes(b))) price = 8000;
         else price = 11000;
 
-        if (disp >= 1000) { price += 5000; }
+        // 900 rather than 1000: literbikes are commonly 998cc (ZX-10R, R1,
+        // CBR1000RR), so a >= 1000 cut priced them as middleweights.
+        if (disp >= 900) { price += 5000; }
         else if (disp >= 600) { price += 2000; }
         else if (disp <= 300) { price -= 2000; }
 
@@ -773,7 +829,7 @@ function estimateCosts(v, type) {
         if (age > 7)  price = Math.round(price * 0.55);
         price = Math.round(price / 250) * 250;
 
-        insurance = disp >= 1000 ? 900 : disp >= 600 ? 650 : 450;
+        insurance = disp >= 900 ? 900 : disp >= 600 ? 650 : 450;
         if (premiumBrands.some(b => make.includes(b))) insurance += 300;
         insurance = Math.round(insurance / 50) * 50;
 
