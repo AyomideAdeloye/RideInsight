@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="legal-page">
+
+    <div class="legal-header">
+        <h2><i data-lucide="{{ icon }}"></i> {{ title }}</h2>
+        {% if updated %}<p class="legal-updated">Last updated {{ updated }}</p>{% endif %}
+    </div>
+
+    <div class="legal-body">
+        {{ body | safe }}
+    </div>
+
+    <div class="legal-footer-nav">
+        <a href="{{ url_for('support') }}">Contact&nbsp;&amp;&nbsp;Support</a>
+        <a href="{{ url_for('privacy') }}">Privacy&nbsp;Policy</a>
+        <a href="{{ url_for('terms') }}">Terms&nbsp;&amp;&nbsp;Conditions</a>
+    </div>
+
+</div>
+{% endblock %}

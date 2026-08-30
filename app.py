@@ -1,5 +1,6 @@
 import os
 import re
+import uuid
 import sqlite3
 import requests
 import bleach
@@ -54,6 +55,41 @@ BADGES = {
     "poll_creator":  {"name": "Poll Creator",   "icon": "📊", "color": "#0284c7", "desc": "Created your first poll"},
     "meet_host":     {"name": "Meet Host",      "icon": "📍", "color": "#be185d", "desc": "Hosted your first car meet"},
     "storyteller":   {"name": "Storyteller",    "icon": "📸", "color": "#059669", "desc": "Posted your first story"},
+
+    # ── Builder ──
+    "fabricator":    {"name": "Fabricator",     "icon": "🛠️", "color": "#ea580c", "desc": "Saved 5 custom builds"},
+    "big_spender":   {"name": "Big Spender",    "icon": "💸", "color": "#16a34a", "desc": "Built a car with over $10,000 in mods"},
+    "purist":        {"name": "Purist",         "icon": "🤍", "color": "#64748b", "desc": "Saved a completely stock build"},
+
+    # ── Garage ──
+    "two_car":       {"name": "Two-Car Garage", "icon": "🚙", "color": "#0891b2", "desc": "Added a second vehicle to your garage"},
+    "fleet":         {"name": "Fleet",          "icon": "🏭", "color": "#1d4ed8", "desc": "10 or more vehicles in the garage"},
+
+    # ── Comparison ──
+    "researcher":    {"name": "Researcher",     "icon": "🔍", "color": "#7c3aed", "desc": "Saved your first comparison"},
+    "analyst":       {"name": "Analyst",        "icon": "📈", "color": "#4338ca", "desc": "Saved 10 comparisons"},
+
+    # ── Racing ──
+    "undefeated":    {"name": "Undefeated",     "icon": "👑", "color": "#b45309", "desc": "Won 25 races"},
+    "challenger":    {"name": "Challenger",     "icon": "⚔️", "color": "#be123c", "desc": "Raced another user's build"},
+
+    # ── Community ──
+    "commentator":   {"name": "Commentator",    "icon": "💬", "color": "#0284c7", "desc": "Left 25 comments"},
+    "club_founder":  {"name": "Club Founder",   "icon": "🏛️", "color": "#7e22ce", "desc": "Founded a car club"},
+    "club_member":   {"name": "Joiner",         "icon": "🤝", "color": "#0d9488", "desc": "Joined 3 car clubs"},
+    "regular":       {"name": "Regular",        "icon": "📅", "color": "#65a30d", "desc": "RSVP'd to 5 car meets"},
+    "well_known":    {"name": "Well Known",     "icon": "🌟", "color": "#c026d3", "desc": "Gained 100 followers"},
+    "prolific":      {"name": "Prolific",       "icon": "✍️", "color": "#9333ea", "desc": "Reached 50 posts on the feed"},
+
+    # ── Marketplace ──
+    "seller":        {"name": "Seller",         "icon": "🏷️", "color": "#f59e0b", "desc": "Posted your first marketplace listing"},
+
+    # ── Profile ──
+    "identified":    {"name": "Identified",     "icon": "🪪", "color": "#475569", "desc": "Added a profile picture and bio"},
+    "connected":     {"name": "Connected",      "icon": "🔗", "color": "#2563eb", "desc": "Linked a social account"},
+
+    # ── Meta ──
+    "completionist": {"name": "Completionist",  "icon": "💯", "color": "#dc2626", "desc": "Earned 15 other badges"},
 }
 
 def check_and_award_badges(conn, user_id):
@@ -119,6 +155,95 @@ def check_and_award_badges(conn, user_id):
     # Story posted
     story_count = conn.execute("SELECT COUNT(*) FROM stories WHERE user_id=?", (user_id,)).fetchone()[0]
     if story_count >= 1: award("storyteller")
+
+    # ── Extended badges ──────────────────────────────────────────
+    # Every query below is wrapped, because a missing table or column on an
+    # older database must not stop the badges above from being awarded.
+    def safe(fn):
+        try:    return fn()
+        except Exception: return None
+
+    if post_count >= 50: award("prolific")
+    if build_count >= 5: award("fabricator")
+    if car_count  >= 2:  award("two_car")
+    if car_count  >= 10: award("fleet")
+    if win_count  >= 25: award("undefeated")
+    if follower_count >= 100: award("well_known")
+
+    # Build spend — parts_json is a list of {cost} entries
+    def _build_spend():
+        import json as _json
+        rows = conn.execute("SELECT parts_json FROM builds WHERE user_id=?", (user_id,)).fetchall()
+        best, has_stock = 0, False
+        for r in rows:
+            try:    parts = _json.loads(r["parts_json"] or "[]")
+            except Exception: continue
+            spend = sum(float(p.get("cost") or 0) for p in parts if isinstance(p, dict))
+            best = max(best, spend)
+            # "Stock" means no paid parts, not an empty build
+            if parts and spend == 0: has_stock = True
+        return best, has_stock
+    res = safe(_build_spend)
+    if res:
+        best_spend, has_stock = res
+        if best_spend >= 10000: award("big_spender")
+        if has_stock:           award("purist")
+
+    # Comparisons saved
+    cmp_count = safe(lambda: conn.execute(
+        "SELECT COUNT(*) FROM comparisons WHERE user_id=?", (user_id,)).fetchone()[0])
+    if cmp_count:
+        if cmp_count >= 1:  award("researcher")
+        if cmp_count >= 10: award("analyst")
+
+    # Raced a real user's build rather than the AI
+    pvp = safe(lambda: conn.execute(
+        "SELECT COUNT(*) FROM race_results WHERE user_id=? AND opp_build IS NOT NULL "
+        "AND opp_build != '' AND opp_build NOT LIKE '%Daily Driver%' "
+        "AND opp_build NOT LIKE '%Camry%' AND opp_build NOT LIKE '%Street Build%' "
+        "AND opp_build NOT LIKE '%Monster%'", (user_id,)).fetchone()[0])
+    if pvp and pvp >= 1: award("challenger")
+
+    # Comments left
+    comment_count = safe(lambda: conn.execute(
+        "SELECT COUNT(*) FROM comments WHERE username=(SELECT username FROM users WHERE id=?)",
+        (user_id,)).fetchone()[0])
+    if comment_count and comment_count >= 25: award("commentator")
+
+    # Clubs founded / joined
+    founded = safe(lambda: conn.execute(
+        "SELECT COUNT(*) FROM clubs WHERE created_by=? AND is_auto=0", (user_id,)).fetchone()[0])
+    if founded and founded >= 1: award("club_founder")
+
+    joined = safe(lambda: conn.execute(
+        "SELECT COUNT(*) FROM club_members WHERE user_id=?", (user_id,)).fetchone()[0])
+    if joined and joined >= 3: award("club_member")
+
+    # Meets attended
+    rsvps = safe(lambda: conn.execute(
+        "SELECT COUNT(*) FROM meet_rsvps WHERE user_id=?", (user_id,)).fetchone()[0])
+    if rsvps and rsvps >= 5: award("regular")
+
+    # Marketplace listing
+    listed = safe(lambda: conn.execute(
+        "SELECT COUNT(*) FROM listings WHERE user_id=?", (user_id,)).fetchone()[0])
+    if listed and listed >= 1: award("seller")
+
+    # Profile completeness
+    prof = safe(lambda: conn.execute(
+        "SELECT avatar, bio FROM users WHERE id=?", (user_id,)).fetchone())
+    if prof and (prof["avatar"] or "").strip() and (prof["bio"] or "").strip():
+        award("identified")
+
+    socials = safe(lambda: conn.execute(
+        "SELECT social_instagram, social_tiktok, social_youtube, social_x, "
+        "social_reddit, social_facebook, social_website FROM users WHERE id=?",
+        (user_id,)).fetchone())
+    if socials and any((v or "").strip() for v in tuple(socials)):
+        award("connected")
+
+    # Meta badge — counted last so it sees everything awarded above
+    if len(earned - {"completionist"}) >= 15: award("completionist")
 
 # ─── Global template context ────────────────────────────────────
 @app.context_processor
@@ -192,7 +317,12 @@ def save_upload(file_field):
     checker = allowed_video if file_field == "video" else allowed_file
     if not checker(f.filename):
         return ""
-    filename = secure_filename(f.filename)
+    # Make every upload unique. Keeping the original name meant two users
+    # uploading "IMG_1234.jpg" — or any two cropped covers, which are all
+    # named cover.jpg — would silently overwrite each other's file.
+    safe = secure_filename(f.filename) or "upload"
+    stem, ext = os.path.splitext(safe)
+    filename = f"{stem[:40]}_{uuid.uuid4().hex[:12]}{ext.lower()}"
     path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
     f.save(path)
     return "/" + path.replace("\\", "/")
@@ -1584,6 +1714,178 @@ def save_comparison():
 @app.route("/saved")
 def saved():
     return render_template("saved.html")
+
+# ─── Legal / support pages ────────────────────────────────────────
+# These are required before launch and again by the app stores later.
+# Content lives here rather than in templates so the three pages share one
+# layout and the "last updated" dates stay in one place.
+LEGAL_UPDATED = "29 August 2026"
+SUPPORT_EMAIL = "rideinsightapp@gmail.com"
+
+@app.route("/support")
+def support():
+    body = f"""
+    <p>RideInsight is built and run by one person, so you're emailing the
+    developer directly — not a support queue.</p>
+
+    <h3>Get in touch</h3>
+    <p><a href="mailto:{SUPPORT_EMAIL}">{SUPPORT_EMAIL}</a></p>
+    <p>Expect a reply within a few days. Including your username and a
+    screenshot makes bugs much faster to fix.</p>
+
+    <h3>What to include for a bug report</h3>
+    <ul>
+      <li>What you were doing when it happened</li>
+      <li>What you expected instead</li>
+      <li>Your browser and whether you're on phone or desktop</li>
+      <li>A screenshot if the problem is visual</li>
+    </ul>
+
+    <h3>Common questions</h3>
+    <p><strong>The 3D builder won't load.</strong> It needs WebGL. Try a
+    different browser, and make sure hardware acceleration is enabled.
+    Models are large, so the first load on mobile data can be slow.</p>
+
+    <p><strong>Will these parts fit my car?</strong> Not necessarily. The
+    builder shows how parts look and roughly what they cost. Fitment isn't
+    verified — always confirm size, offset and application with the seller
+    before buying.</p>
+
+    <p><strong>The specs on a vehicle are wrong.</strong> Vehicle data comes
+    from third-party sources and our own records, and both contain errors.
+    Email the correction and it'll get fixed.</p>
+
+    <p><strong>Delete my account.</strong> Settings &rarr; Delete Account
+    removes your account and its content. It can't be undone.</p>
+    """
+    return render_template("legal.html", title="Contact & Support",
+                           icon="life-buoy", updated=None, body=body)
+
+@app.route("/privacy")
+def privacy():
+    body = f"""
+    <p>This policy explains what RideInsight collects, why, and what control
+    you have over it. Plain language, no lawyer-speak where it can be avoided.</p>
+
+    <h3>What we collect</h3>
+    <ul>
+      <li><strong>Account details</strong> — username, email, password (stored
+          hashed, never in plain text).</li>
+      <li><strong>Content you create</strong> — posts, comments, builds, garage
+          vehicles, comparisons, messages, club and meet activity.</li>
+      <li><strong>Uploads</strong> — profile photos, banners and post images.</li>
+      <li><strong>Basic technical data</strong> — the usual server logs, used to
+          keep the site running and to investigate abuse.</li>
+    </ul>
+
+    <h3>What we don't do</h3>
+    <ul>
+      <li>We don't sell your personal information.</li>
+      <li>We don't run behavioural advertising.</li>
+      <li>We don't read your private messages except where required to
+          investigate a report of abuse.</li>
+    </ul>
+
+    <h3>Third parties</h3>
+    <p>Vehicle specifications are retrieved from third-party data providers.
+    Those requests contain the vehicle you searched for, not your identity.
+    Some parts in the builder link to external retailers; those links may be
+    affiliate links, meaning RideInsight may earn a commission at no extra cost
+    to you. Once you follow a link, that retailer's own privacy policy applies.</p>
+
+    <h3>Cookies</h3>
+    <p>We use a session cookie to keep you signed in and to remember your theme
+    preference. That's it — no third-party tracking cookies.</p>
+
+    <h3>Your control</h3>
+    <ul>
+      <li>Edit or delete your posts, builds and garage entries at any time.</li>
+      <li>Delete your account from Settings. This removes your account and its
+          associated content and cannot be undone.</li>
+      <li>Email <a href="mailto:{SUPPORT_EMAIL}">{SUPPORT_EMAIL}</a> to request
+          a copy of your data or ask a question about this policy.</li>
+    </ul>
+
+    <h3>Children</h3>
+    <p>RideInsight isn't directed at children under 13, and we don't knowingly
+    collect their information. If you believe a child has created an account,
+    email us and it will be removed.</p>
+
+    <h3>Security</h3>
+    <p>Passwords are hashed and requests are protected against cross-site
+    request forgery. No service is perfectly secure, so please use a unique
+    password here.</p>
+
+    <h3>Changes</h3>
+    <p>If this policy changes materially, the date at the top of this page will
+    change and significant updates will be announced in the app.</p>
+    """
+    return render_template("legal.html", title="Privacy Policy",
+                           icon="shield", updated=LEGAL_UPDATED, body=body)
+
+@app.route("/terms")
+def terms():
+    body = f"""
+    <p>By creating an account or using RideInsight, you agree to these terms.</p>
+
+    <h3>Your account</h3>
+    <p>You must be at least 13 years old. Keep your password to yourself — you're
+    responsible for what happens under your account. One person, one account.</p>
+
+    <h3>Your content</h3>
+    <p>You keep ownership of everything you post. By posting it, you grant
+    RideInsight permission to display and distribute it within the platform so
+    the app can function. You're responsible for having the right to post what
+    you upload — don't post photos that aren't yours to share.</p>
+
+    <h3>Acceptable use</h3>
+    <p>Don't use RideInsight to harass, threaten or impersonate people; post
+    illegal content, spam or malware; scrape the site or hammer it with
+    automated requests; or attempt to access accounts that aren't yours.
+    Accounts that do these things may be suspended or removed.</p>
+
+    <h3>Vehicle data and estimates</h3>
+    <p>Specifications, valuations, running costs and performance figures shown
+    on RideInsight are <strong>estimates for comparison purposes only</strong>.
+    They come from third-party sources and our own calculations, and they will
+    sometimes be wrong. Don't rely on them for a purchase, insurance,
+    registration or any other decision with money attached. Verify with the
+    manufacturer or seller.</p>
+
+    <h3>Parts, fitment and affiliate links</h3>
+    <p>The builder is a visualisation tool. Parts shown on a vehicle may not fit
+    that vehicle, and prices change without notice. Confirm fitment and price
+    with the retailer before you buy. Some outbound links are affiliate links,
+    and RideInsight may earn a commission from purchases made through them at no
+    extra cost to you. We aren't a party to your transaction with any retailer
+    and can't help with their orders, shipping or returns.</p>
+
+    <h3>Meets and marketplace</h3>
+    <p>Car meets and marketplace listings are created by users, not by
+    RideInsight. We don't verify listings, vet attendees or inspect vehicles.
+    Meet people in public places, inspect anything before you buy it, and use
+    your judgement — you're dealing with the other person, not with us.</p>
+
+    <h3>Availability</h3>
+    <p>RideInsight is provided as-is, without warranty. It may go down, lose
+    data, or change features. Keep your own copies of anything you'd hate to
+    lose.</p>
+
+    <h3>Liability</h3>
+    <p>To the extent permitted by law, RideInsight isn't liable for indirect or
+    consequential losses arising from your use of the platform, including
+    decisions made on the basis of estimated vehicle data or parts information.</p>
+
+    <h3>Ending things</h3>
+    <p>You can delete your account at any time from Settings. We may suspend
+    accounts that breach these terms.</p>
+
+    <h3>Changes</h3>
+    <p>These terms may change; the date at the top will be updated when they do.
+    Questions go to <a href="mailto:{SUPPORT_EMAIL}">{SUPPORT_EMAIL}</a>.</p>
+    """
+    return render_template("legal.html", title="Terms & Conditions",
+                           icon="file-text", updated=LEGAL_UPDATED, body=body)
 
 # ─── Landing page + waitlist ──────────────────────────────────────
 @app.route("/welcome")
@@ -3010,6 +3312,36 @@ def auto_create_make_clubs(conn):
             """, (f"{make} Club", slug, f"The official RideInsight club for {make} enthusiasts.",
                   make, datetime.utcnow().strftime("%Y-%m-%d %H:%M")))
 
+# ─── Club roles and limits ────────────────────────────────────────
+# Ranked so a check is just a >= comparison. Admins can do everything a
+# moderator can; moderators can moderate content but not restructure the club.
+CLUB_ROLES = {"member": 0, "moderator": 1, "admin": 2}
+
+# One person shouldn't be able to squat dozens of club names.
+MAX_CLUBS_PER_USER = 5
+# Guards against one admin promoting an entire club to moderator.
+MAX_MODERATORS_PER_CLUB = 10
+
+def club_role(conn, club_id, user_id):
+    """Return this user's role in the club, or None if they aren't a member."""
+    if not user_id:
+        return None
+    row = conn.execute(
+        "SELECT role FROM club_members WHERE club_id=? AND user_id=?",
+        (club_id, user_id)
+    ).fetchone()
+    return row["role"] if row else None
+
+def club_rank(conn, club_id, user_id):
+    return CLUB_ROLES.get(club_role(conn, club_id, user_id) or "", -1)
+
+def require_club_role(conn, club_id, user_id, minimum):
+    """None if permitted, else a ready-to-return (json, status) tuple."""
+    if club_rank(conn, club_id, user_id) < CLUB_ROLES[minimum]:
+        label = "Admins" if minimum == "admin" else "Moderators and admins"
+        return jsonify({"error": f"{label} only"}), 403
+    return None
+
 @app.route("/clubs")
 def clubs_page():
     if "user_id" not in session:
@@ -3085,6 +3417,18 @@ def create_club():
 
     slug = slugify(name)
     conn = get_db_connection()
+
+    # Cap how many clubs one person can create, so names can't be squatted.
+    # Auto-generated make clubs don't count against the limit.
+    mine = conn.execute(
+        "SELECT COUNT(*) FROM clubs WHERE created_by=? AND is_auto=0",
+        (session["user_id"],)
+    ).fetchone()[0]
+    if mine >= MAX_CLUBS_PER_USER:
+        conn.close()
+        return jsonify({"error": f"You can create up to {MAX_CLUBS_PER_USER} clubs. "
+                                 f"Delete one first."}), 400
+
     existing = conn.execute("SELECT id FROM clubs WHERE slug = ?", (slug,)).fetchone()
     if existing:
         conn.close()
@@ -3234,13 +3578,9 @@ def delete_club(club_id):
     if "user_id" not in session:
         return jsonify({"error": "Not logged in"}), 401
     conn = get_db_connection()
-    me = conn.execute(
-        "SELECT role FROM club_members WHERE club_id=? AND user_id=?",
-        (club_id, session["user_id"])
-    ).fetchone()
-    if not me or me["role"] != "admin":
-        conn.close()
-        return jsonify({"error": "Admins only"}), 403
+    denied = require_club_role(conn, club_id, session["user_id"], "admin")
+    if denied:
+        conn.close(); return denied
     # Delete everything related to this club
     conn.execute("DELETE FROM club_post_likes WHERE post_id IN (SELECT id FROM club_posts WHERE club_id=?)", (club_id,))
     conn.execute("DELETE FROM club_posts WHERE club_id=?",   (club_id,))
@@ -3258,23 +3598,113 @@ def promote_member(club_id):
     data      = request.json or {}
     target_id = int(data.get("user_id", 0))
     new_role  = sanitize(data.get("role", "member"))
-    if new_role not in ("admin", "member"):
+    if new_role not in CLUB_ROLES:
         return jsonify({"error": "Invalid role"}), 400
+
     conn = get_db_connection()
-    # Must be admin
-    me = conn.execute(
-        "SELECT role FROM club_members WHERE club_id=? AND user_id=?",
-        (club_id, session["user_id"])
-    ).fetchone()
-    if not me or me["role"] != "admin":
+    denied = require_club_role(conn, club_id, session["user_id"], "admin")
+    if denied:
+        conn.close(); return denied
+
+    if target_id == session["user_id"]:
         conn.close()
-        return jsonify({"error": "Admins only"}), 403
+        return jsonify({"error": "You can't change your own role"}), 400
+
+    target = conn.execute(
+        "SELECT role FROM club_members WHERE club_id=? AND user_id=?",
+        (club_id, target_id)
+    ).fetchone()
+    if not target:
+        conn.close()
+        return jsonify({"error": "That user isn't a member of this club"}), 404
+
+    # A club must always keep at least one admin, or nobody can manage it.
+    if target["role"] == "admin" and new_role != "admin":
+        admins = conn.execute(
+            "SELECT COUNT(*) FROM club_members WHERE club_id=? AND role='admin'",
+            (club_id,)
+        ).fetchone()[0]
+        if admins <= 1:
+            conn.close()
+            return jsonify({"error": "A club needs at least one admin"}), 400
+
+    if new_role == "moderator" and target["role"] != "moderator":
+        mods = conn.execute(
+            "SELECT COUNT(*) FROM club_members WHERE club_id=? AND role='moderator'",
+            (club_id,)
+        ).fetchone()[0]
+        if mods >= MAX_MODERATORS_PER_CLUB:
+            conn.close()
+            return jsonify({"error": f"Limit of {MAX_MODERATORS_PER_CLUB} moderators"}), 400
+
     conn.execute(
         "UPDATE club_members SET role=? WHERE club_id=? AND user_id=?",
         (new_role, club_id, target_id)
     )
+    club = conn.execute("SELECT name, slug FROM clubs WHERE id=?", (club_id,)).fetchone()
+    if club and new_role != "member":
+        add_notification(conn, target_id,
+                         f"You're now a {new_role} of {club['name']}",
+                         link=f"/clubs/{club['slug']}")
     conn.commit(); conn.close()
     return jsonify({"message": f"Role updated to {new_role}"})
+
+@csrf.exempt
+@app.route("/api/clubs/<int:club_id>/remove_member", methods=["POST"])
+def remove_club_member(club_id):
+    """Moderators and admins can remove members. Only admins can remove mods."""
+    if "user_id" not in session:
+        return jsonify({"error": "Not logged in"}), 401
+    target_id = int((request.json or {}).get("user_id", 0))
+
+    conn = get_db_connection()
+    denied = require_club_role(conn, club_id, session["user_id"], "moderator")
+    if denied:
+        conn.close(); return denied
+
+    if target_id == session["user_id"]:
+        conn.close()
+        return jsonify({"error": "Use Leave Club instead"}), 400
+
+    my_rank     = club_rank(conn, club_id, session["user_id"])
+    target_rank = club_rank(conn, club_id, target_id)
+    if target_rank < 0:
+        conn.close()
+        return jsonify({"error": "That user isn't a member"}), 404
+    # You can only remove someone below you in rank.
+    if target_rank >= my_rank:
+        conn.close()
+        return jsonify({"error": "You can't remove someone at or above your role"}), 403
+
+    conn.execute("DELETE FROM club_members WHERE club_id=? AND user_id=?", (club_id, target_id))
+    conn.execute("UPDATE clubs SET member_count = MAX(0, member_count-1) WHERE id=?", (club_id,))
+    conn.commit(); conn.close()
+    return jsonify({"message": "Member removed"})
+
+@csrf.exempt
+@app.route("/api/clubs/post/<int:post_id>/delete", methods=["POST"])
+def delete_club_post(post_id):
+    """Post authors can delete their own; moderators and admins can delete any."""
+    if "user_id" not in session:
+        return jsonify({"error": "Not logged in"}), 401
+    conn = get_db_connection()
+    post = conn.execute(
+        "SELECT club_id, user_id FROM club_posts WHERE id=?", (post_id,)
+    ).fetchone()
+    if not post:
+        conn.close()
+        return jsonify({"error": "Post not found"}), 404
+
+    is_author = post["user_id"] == session["user_id"]
+    if not is_author:
+        denied = require_club_role(conn, post["club_id"], session["user_id"], "moderator")
+        if denied:
+            conn.close(); return denied
+
+    conn.execute("DELETE FROM club_post_likes WHERE post_id=?", (post_id,))
+    conn.execute("DELETE FROM club_posts WHERE id=?", (post_id,))
+    conn.commit(); conn.close()
+    return jsonify({"message": "Post deleted"})
 
 # ─── Messages ─────────────────────────────────────────────────────
 @app.route("/messages")

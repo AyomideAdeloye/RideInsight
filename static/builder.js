@@ -73,6 +73,36 @@ const MUSCLECAR_CATEGORIES = [
             { name: "RunningBoard_C", label: "Carbon",   price: 600 },
         ]
     },
+    {
+        key:      "Wheels",
+        label:    "Wheels",
+        icon:     "circle",
+        // Wheel_A is the pack's own SM_Wheel set, mapped via the vehicle's
+        // `aliases` entry. B onwards appear as you export them.
+        variants: [
+            { name: "Wheel_A", label: "Stock",         price: 0 },
+            { name: "Wheel_B", label: 'EV112 21"',     price: 4295,
+              url: "https://evsportline.com/products/ev112-21-porsche-taycan-wheel-set-of-4" },
+            { name: "Wheel_C", label: "SL-C13",        price: 5996,
+              url: "https://www.spluxwheels.com/products/sl-c13" },
+            { name: "Wheel_D", label: "Enkei TS-7",    price: 1152,
+              url: "https://www.carid.com/enkei-wheels/ts-7-matte-bronze-6950365539.html" },
+            { name: "Wheel_E", label: "ENKEI Triumph", price: 1131,
+              url: "https://www.fitmentindustries.com/buy-wheel-offset/543-885-6538ZP/enkei-triumph-18x85-38" },
+            { name: "Wheel_F", label: "ENKEI PF06",    price: 1609,
+              url: "https://www.fitmentindustries.com/buy-wheel-offset/545-790-8035GG/enkei-pf06-17x9-35" },
+        ]
+    },
+    {
+        key:      "Brakes",
+        label:    "Brakes",
+        icon:     "circle-dot",
+        variants: [
+            { name: "Brake_A", label: "Stock", price: 0 },
+            { name: "Brake_B", label: "Brembo GT Slotted", price: 2295,
+              url: "https://www.buybrakes.com/2016-mazda-6/big-brake-kits/bm-brembo-gt-systems-slotted-big-brake-kits" },
+        ]
+    },
 ];
 
 // ── Vehicle registry (RI-VAS) ──────────────────────────────────────────────
@@ -183,6 +213,11 @@ const VEHICLES = {
         // Modelled along X (bbox 4.92 × 2.07) with the front bumper at +X,
         // so it needs a quarter turn to face +Z like the other two.
         rotationY:  -Math.PI / 2,
+        // This pack ships its stock wheels as SM_Wheel_FL/FR/BL/BR. Rather
+        // than renaming them in Blender (and re-exporting a 15MB file), map
+        // that name onto the Wheel_A slot so they behave as the stock variant
+        // and hide when another wheel is selected.
+        aliases: { "Wheel_A": /^SM_Wheel/i },
     },
     sedan_modern: {
         label:      "Modern Sedan",
@@ -303,11 +338,10 @@ function rebuildPartIndex() {
     PART_CATEGORIES.forEach(c => { selected[c.key] = c.variants[0].name; });
 }
 
-// Meshes always visible (base car)
-const ALWAYS_VISIBLE = [
-    "Body", "Interior",
-    "SM_Wheel_FL", "SM_Wheel_FR", "SM_Wheel_BL", "SM_Wheel_BR",
-];
+// (An ALWAYS_VISIBLE list used to live here. It was dead code, and it listed
+//  SM_Wheel_* as permanently visible — which now contradicts the musclecar
+//  alias that maps those meshes onto the swappable Wheel_A slot. isBaseMesh()
+//  is the single source of truth for base geometry.)
 
 // Current selected variant per category (populated by rebuildPartIndex)
 const selected = {};
@@ -693,6 +727,11 @@ let autoRotate = true;
 //   per-corner    "Wheel_B_FL", "Brake_A_RR"  (so one click swaps all 4)
 const CORNER_SUFFIX = "(_(FL|FR|RL|RR|BL|BR|L|R))?";
 function matchesVariant(meshName, variantName) {
+    // A vehicle can alias a vendor mesh name onto a RI-VAS slot, so bought
+    // models don't have to be renamed in Blender just to fit the convention.
+    const alias = VEHICLES[currentVehicleKey]?.aliases?.[variantName];
+    if (alias && alias.test(meshName)) return true;
+
     const re = new RegExp("(^|_)" + variantName + CORNER_SUFFIX + "(_\\d+)?$", "i");
     return re.test(meshName);
 }
@@ -712,11 +751,17 @@ function effectiveName(node) {
 // Meshes that must NEVER render (skinned duplicate of the whole car —
 // without its armature it explodes into stretched "filament" geometry)
 function isJunkMesh(name) {
-    return /SKM_/i.test(name);
+    // SKM_ = skinned duplicate of the whole car; without its armature it
+    // explodes into stretched "filament" geometry.
+    // Phys_ = collision proxies from the asset pack. Invisible in-engine, but
+    // here they'd render and inflate the bounding box used for auto-scaling.
+    return /SKM_|^Phys_|_Phys_/i.test(name);
 }
 
 // Is this mesh part of the always-visible base (body shell, interior, wheels)?
 function isBaseMesh(name) {
+    // Fallback only: on a vehicle that aliases SM_Wheel onto Wheel_A, the
+    // variant match runs first and this line is never reached.
     if (/SM_Wheel/i.test(name)) return true;
     if (/(^|_)Interior(_\d+)?$/i.test(name)) return true;
     if (/(^|_)Body(_\d+)?$/i.test(name)) return true;

@@ -130,6 +130,12 @@
         <p onclick="window.location.href='/builder'"><i data-lucide="wrench"></i> Custom Vehicle</p>
         <p onclick="window.location.href='/race'"><i data-lucide="flag"></i> Race Mode</p>
     </div>
+
+    <div class="sidebar-footer-links">
+        <a href="{{ url_for('support') }}">Support</a>
+        <a href="{{ url_for('privacy') }}">Privacy</a>
+        <a href="{{ url_for('terms') }}">Terms</a>
+    </div>
 </aside>
 
 {% block content %}{% endblock %}

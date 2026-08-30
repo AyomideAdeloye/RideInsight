@@ -225,6 +225,30 @@
     </div>
 
 </div>
+
+<!-- Cover photo crop / reposition -->
+<div class="modal" id="coverCropModal">
+    <div class="modal-content cover-crop-content">
+        <h2>Position your cover</h2>
+        <p class="cover-crop-hint">Drag the image to reposition. Use the slider to zoom.</p>
+
+        <div class="cover-crop-stage" id="coverCropStage">
+            <canvas id="coverCropCanvas"></canvas>
+        </div>
+
+        <div class="cover-crop-zoom">
+            <i data-lucide="zoom-out"></i>
+            <input type="range" id="coverZoom" min="1" max="3" step="0.01" value="1">
+            <i data-lucide="zoom-in"></i>
+        </div>
+
+        <div class="modal-actions">
+            <button class="btn-submit" onclick="saveCoverCrop()">Save Cover</button>
+            <button class="btn-cancel" onclick="closeCoverCrop()">Cancel</button>
+        </div>
+    </div>
+</div>
+
 {% endblock %}
 
 {% block scripts %}
@@ -347,12 +371,127 @@ async function toggleFollow(targetId) {
     document.querySelector(".follow-stats span strong").textContent = data.follower_count;
 }
 
-async function uploadCover(input) {
-    if (!input.files[0]) return;
-    const formData = new FormData();
-    formData.append("cover", input.files[0]);
-    const res  = await fetch("/upload_cover", { method: "POST", body: formData });
-    const data = await res.json();
+// ── Cover photo cropping ───────────────────────────────────────────────
+// The banner is a fixed 3.31:1 strip. Uploading raw meant background-size:cover
+// silently centre-cropped the image, so tall photos lost their subject. This
+// lets you choose the crop, then uploads exactly what you framed.
+const COVER_W = 1720, COVER_H = 520;   // 2x the 860x260 display size
+
+let cropImg = null, cropScale = 1, cropX = 0, cropY = 0;
+let cropDragging = false, cropLastX = 0, cropLastY = 0;
+
+function uploadCover(input) {
+    const file = input.files && input.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+        const img = new Image();
+        img.onload = () => openCoverCrop(img);
+        img.onerror = () => alert("That image couldn't be read. Try a JPG or PNG.");
+        img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+    input.value = "";   // let the same file be picked again after a cancel
+}
+
+function openCoverCrop(img) {
+    cropImg = img;
+    const canvas = document.getElementById("coverCropCanvas");
+    canvas.width = COVER_W; canvas.height = COVER_H;
+
+    // Start at the smallest scale that still covers the frame, centred.
+    cropScale = Math.max(COVER_W / img.width, COVER_H / img.height);
+    cropX = (COVER_W - img.width  * cropScale) / 2;
+    cropY = (COVER_H - img.height * cropScale) / 2;
+
+    const zoom = document.getElementById("coverZoom");
+    zoom.min = "1"; zoom.max = "3"; zoom.value = "1";
+    zoom.oninput = () => {
+        const base = Math.max(COVER_W / cropImg.width, COVER_H / cropImg.height);
+        const prev = cropScale;
+        cropScale = base * parseFloat(zoom.value);
+        // Zoom about the centre so the framing doesn't jump
+        cropX = COVER_W / 2 - (COVER_W / 2 - cropX) * (cropScale / prev);
+        cropY = COVER_H / 2 - (COVER_H / 2 - cropY) * (cropScale / prev);
+        clampCrop(); drawCrop();
+    };
+
+    clampCrop(); drawCrop();
+    document.getElementById("coverCropModal").style.display = "flex";
+    if (window.refreshIcons) window.refreshIcons();
+}
+
+// Never let the image pull away from an edge and expose blank canvas.
+function clampCrop() {
+    const w = cropImg.width * cropScale, h = cropImg.height * cropScale;
+    cropX = Math.min(0, Math.max(COVER_W - w, cropX));
+    cropY = Math.min(0, Math.max(COVER_H - h, cropY));
+}
+
+function drawCrop() {
+    const ctx = document.getElementById("coverCropCanvas").getContext("2d");
+    ctx.clearRect(0, 0, COVER_W, COVER_H);
+    ctx.drawImage(cropImg, cropX, cropY,
+                  cropImg.width * cropScale, cropImg.height * cropScale);
+}
+
+(function initCoverDrag() {
+    const stage = document.getElementById("coverCropStage");
+    if (!stage) return;
+    const canvas = document.getElementById("coverCropCanvas");
+
+    const pos = e => {
+        const t = e.touches ? e.touches[0] : e;
+        const r = canvas.getBoundingClientRect();
+        // Canvas is displayed smaller than its pixel size — scale the delta up
+        return { x: t.clientX * (COVER_W / r.width), y: t.clientY * (COVER_H / r.height) };
+    };
+    const start = e => {
+        if (!cropImg) return;
+        cropDragging = true;
+        const p = pos(e); cropLastX = p.x; cropLastY = p.y;
+    };
+    const move = e => {
+        if (!cropDragging || !cropImg) return;
+        e.preventDefault();
+        const p = pos(e);
+        cropX += p.x - cropLastX; cropY += p.y - cropLastY;
+        cropLastX = p.x; cropLastY = p.y;
+        clampCrop(); drawCrop();
+    };
+    const end = () => { cropDragging = false; };
+
+    stage.addEventListener("mousedown", start);
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", end);
+    stage.addEventListener("touchstart", start, { passive: true });
+    stage.addEventListener("touchmove", move,  { passive: false });
+    stage.addEventListener("touchend", end);
+})();
+
+function closeCoverCrop() {
+    document.getElementById("coverCropModal").style.display = "none";
+    cropImg = null;
+}
+
+function saveCoverCrop() {
+    if (!cropImg) return;
+    document.getElementById("coverCropCanvas").toBlob(async blob => {
+        if (!blob) { alert("Couldn't process that image."); return; }
+        const formData = new FormData();
+        formData.append("cover", blob, "cover.jpg");
+        try {
+            const res  = await fetch("/upload_cover", { method: "POST", body: formData });
+            const data = await res.json();
+            closeCoverCrop();
+            applyCoverUrl(data);
+        } catch (err) {
+            alert("Upload failed. Please try again.");
+        }
+    }, "image/jpeg", 0.9);
+}
+
+function applyCoverUrl(data) {
     if (data.url) {
         const cover = document.getElementById("profileCover");
         cover.style.backgroundImage = `url('${data.url}')`;

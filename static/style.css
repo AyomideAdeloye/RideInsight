@@ -5938,3 +5938,81 @@ html.dark-mode.scheme-blue   { --accent-light: #1e3a5f; }
     color: #7d879a;
 }
 .fitment-note i { width: 12px; height: 12px; flex-shrink: 0; margin-top: 1px; }
+
+/* ── Legal / support pages ─────────────────────────────────────── */
+.legal-page {
+    max-width: 780px; margin: 0 auto; padding: 24px 20px 60px;
+}
+.legal-header { margin-bottom: 24px; }
+.legal-header h2 {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 26px; font-weight: 800; margin-bottom: 6px;
+}
+.legal-updated { font-size: 13px; color: var(--text-muted); }
+.legal-body {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 26px 28px; box-shadow: var(--shadow);
+    line-height: 1.65; font-size: 15px;
+}
+.legal-body h3 {
+    font-size: 15px; font-weight: 800; margin: 26px 0 8px;
+    text-transform: uppercase; letter-spacing: 0.04em; color: var(--accent);
+}
+.legal-body h3:first-child { margin-top: 0; }
+.legal-body p  { margin-bottom: 12px; color: var(--text); }
+.legal-body ul { margin: 0 0 14px 20px; }
+.legal-body li { margin-bottom: 7px; }
+.legal-body a  { color: var(--accent); text-decoration: none; font-weight: 600; }
+.legal-body a:hover { text-decoration: underline; }
+
+.legal-footer-nav {
+    display: flex; flex-wrap: wrap; gap: 18px;
+    justify-content: center; margin-top: 22px;
+}
+.legal-footer-nav a {
+    font-size: 13px; font-weight: 600;
+    color: var(--text-muted); text-decoration: none;
+}
+.legal-footer-nav a:hover { color: var(--accent); }
+
+/* Sidebar footer links */
+.sidebar-footer-links {
+    display: flex; flex-wrap: wrap; gap: 10px;
+    padding: 16px 18px 8px; margin-top: 6px;
+    border-top: 1px solid var(--border);
+}
+.sidebar-footer-links a {
+    font-size: 11px; color: var(--text-muted); text-decoration: none;
+}
+.sidebar-footer-links a:hover { color: var(--accent); }
+
+@media (max-width: 700px) {
+    .legal-body { padding: 20px 18px; font-size: 14.5px; }
+    .legal-header h2 { font-size: 22px; }
+}
+
+/* ── Cover photo crop modal ────────────────────────────────────── */
+.cover-crop-content { max-width: 720px; width: 94vw; }
+.cover-crop-hint {
+    font-size: 13px; color: var(--text-muted); margin: -6px 0 14px;
+}
+.cover-crop-stage {
+    width: 100%;
+    aspect-ratio: 1720 / 520;      /* matches the banner exactly */
+    border-radius: 10px;
+    overflow: hidden;
+    background: #0b0d10;
+    cursor: grab;
+    touch-action: none;            /* let us handle the drag, not the browser */
+    border: 1px solid var(--border);
+}
+.cover-crop-stage:active { cursor: grabbing; }
+.cover-crop-stage canvas {
+    width: 100%; height: 100%; display: block;
+    user-select: none; -webkit-user-drag: none;
+}
+.cover-crop-zoom {
+    display: flex; align-items: center; gap: 12px; margin: 16px 0 4px;
+}
+.cover-crop-zoom i { width: 16px; height: 16px; color: var(--text-muted); }
+.cover-crop-zoom input[type="range"] { flex: 1; accent-color: var(--accent); }
