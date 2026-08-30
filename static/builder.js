@@ -2,6 +2,37 @@
 // Modular mesh-swap builder powered by Three.js + real GLB assets
 
 // ── Part configuration ─────────────────────────────────────────────────────
+// ── Shared spoiler catalogue ───────────────────────────────────────────────
+// The same spoilers are modelled on more than one body, so a slot name means
+// the same part on every car. Previously each car defined its own meaning for
+// Spoiler_A/B/C, which made a saved build's spoiler wrong if it was loaded
+// onto a different body. One list, one meaning.
+//
+//   Spoiler_None  no spoiler
+//   Spoiler_A     Lip Spoiler   (originally the muscle car's)
+//   Spoiler_B     Sport Wing
+//   Spoiler_C     GT Wing
+//   Spoiler_D     Flat Trunk    (originally the Mazda's lip)
+//
+// Slots self-manage: a car only shows the ones actually present in its GLB.
+const SPOILER_VARIANTS = [
+    { name: "Spoiler_None", label: "None",        price: 0,   alwaysShow: true },
+    { name: "Spoiler_A",    label: "Lip Spoiler", price: 0   },
+    { name: "Spoiler_B",    label: "Sport Wing",  price: 400 },
+    { name: "Spoiler_C",    label: "GT Wing",     price: 950 },
+    // TODO: price + retailer link once sourced
+    { name: "Spoiler_D",    label: "Flat Trunk",  price: 0   },
+];
+
+// Each car loads wearing the spoiler it actually ships with.
+const spoilerCategory = (defaultName) => ({
+    key:      "Spoiler",
+    label:    "Spoiler",
+    icon:     "flag",
+    default:  defaultName,
+    variants: SPOILER_VARIANTS,
+});
+
 const MUSCLECAR_CATEGORIES = [
     {
         key:      "Hood",
@@ -33,22 +64,7 @@ const MUSCLECAR_CATEGORIES = [
             { name: "RearBumper_C", label: "Diffuser", price: 800 },
         ]
     },
-    {
-        key:      "Spoiler",
-        label:    "Spoiler",
-        icon:     "flag",
-        // Keep the lip spoiler as the loaded look; "None" is opt-in.
-        default:  "Spoiler_A",
-        variants: [
-            // A delete option: no geometry of its own, so alwaysShow keeps it
-            // in the list. Selecting it hides every other spoiler and nothing
-            // takes their place.
-            { name: "Spoiler_None", label: "None", price: 0, alwaysShow: true },
-            { name: "Spoiler_A", label: "Lip Spoiler", price: 0 },
-            { name: "Spoiler_B", label: "Sport Wing",  price: 400 },
-            { name: "Spoiler_C", label: "GT Wing",     price: 950 },
-        ]
-    },
+    spoilerCategory("Spoiler_A"),   // ships with the lip spoiler
     {
         key:      "Exhaust",
         label:    "Exhaust",
@@ -141,18 +157,7 @@ const MAZDA6_GJ_CATEGORIES = [
             { name: "RearBumper_A", label: "Stock", price: 0 },
         ]
     },
-    {
-        key:      "Spoiler",
-        label:    "Spoiler",
-        icon:     "wind",
-        variants: [
-            // alwaysShow: intentionally has no mesh — it's the "off" option
-            { name: "Spoiler_A", label: "None",        price: 0,    alwaysShow: true },
-            { name: "Spoiler_B", label: "Lip Spoiler", price: 450  },
-            { name: "Spoiler_C", label: "GT Wing",     price: 1200 },
-            { name: "Spoiler_D", label: "Ducktail",    price: 800  },
-        ]
-    },
+    spoilerCategory("Spoiler_D"),   // ships with the flat trunk
     {
         key:      "FrontLip",
         label:    "Front Lip",

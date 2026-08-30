@@ -12,6 +12,7 @@
             <button class="settings-nav-item" data-section="appearance" onclick="showSection('appearance')"><i data-lucide="palette"></i> Appearance</button>
             <button class="settings-nav-item" data-section="socials" onclick="showSection('socials')"><i data-lucide="link"></i> Social Links</button>
             <button class="settings-nav-item" data-section="saved" onclick="showSection('saved')"><i data-lucide="bookmark"></i> Saved Posts</button>
+            <button class="settings-nav-item" data-section="help" onclick="showSection('help')"><i data-lucide="life-buoy"></i> Help &amp; Legal</button>
             <button class="settings-nav-item danger-nav" data-section="danger" onclick="showSection('danger')"><i data-lucide="triangle-alert"></i> Danger Zone</button>
         </div>
 
@@ -188,6 +189,49 @@
                 <div id="savedPostsList" class="saved-posts-list">
                     <p class="empty-state">Loading…</p>
                 </div>
+            </div>
+
+            <!-- Help & Legal -->
+            <div class="settings-section" id="section-help">
+                <h3>Help &amp; Legal</h3>
+
+                <a class="settings-link-card" href="{{ url_for('support') }}">
+                    <i data-lucide="life-buoy"></i>
+                    <div>
+                        <strong>Contact &amp; Support</strong>
+                        <p>Report a bug, ask a question, or send a correction.</p>
+                    </div>
+                    <i data-lucide="chevron-right" class="settings-link-arrow"></i>
+                </a>
+
+                <a class="settings-link-card" href="{{ url_for('privacy') }}">
+                    <i data-lucide="shield"></i>
+                    <div>
+                        <strong>Privacy Policy</strong>
+                        <p>What we collect, what we don't, and how to get your data.</p>
+                    </div>
+                    <i data-lucide="chevron-right" class="settings-link-arrow"></i>
+                </a>
+
+                <a class="settings-link-card" href="{{ url_for('terms') }}">
+                    <i data-lucide="file-text"></i>
+                    <div>
+                        <strong>Terms &amp; Conditions</strong>
+                        <p>The rules of the road for using RideInsight.</p>
+                    </div>
+                    <i data-lucide="chevron-right" class="settings-link-arrow"></i>
+                </a>
+
+                {% if is_admin %}
+                <a class="settings-link-card" href="{{ url_for('admin_photos') }}">
+                    <i data-lucide="image-check"></i>
+                    <div>
+                        <strong>Photo Review Queue</strong>
+                        <p>Approve or reject community photo submissions.</p>
+                    </div>
+                    <i data-lucide="chevron-right" class="settings-link-arrow"></i>
+                </a>
+                {% endif %}
             </div>
 
             <!-- Danger Zone -->

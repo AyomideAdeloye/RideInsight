@@ -795,6 +795,36 @@ def init_db():
         )
     """)
 
+    # "See it in the wild" — owner photos attached to a vehicle, held for
+    # review before they appear. vehicle_key is a normalised make+model so a
+    # 2016 photo shows for every year of that model.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS vehicle_photos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            vehicle_key TEXT NOT NULL,
+            vehicle_type TEXT DEFAULT 'car',
+            make TEXT DEFAULT '',
+            model TEXT DEFAULT '',
+            year TEXT DEFAULT '',
+            image TEXT NOT NULL,
+            caption TEXT DEFAULT '',
+            user_id INTEGER,
+            username TEXT DEFAULT '',
+            status TEXT DEFAULT 'pending',
+            reviewed_by INTEGER,
+            reviewed_at TEXT DEFAULT '',
+            created_at TEXT DEFAULT ''
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_vphotos_key "
+                 "ON vehicle_photos (vehicle_key, status)")
+
+    # Admin flag — gates the photo review queue
+    try:
+        conn.execute("ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0")
+    except Exception:
+        pass
+
     # Drafts: unposted composer content
     conn.execute("""
         CREATE TABLE IF NOT EXISTS drafts (
@@ -1886,6 +1916,127 @@ def terms():
     """
     return render_template("legal.html", title="Terms & Conditions",
                            icon="file-text", updated=LEGAL_UPDATED, body=body)
+
+# ─── "See it in the wild" — community vehicle photos ──────────────
+# Photos are keyed on make+model with the year kept only as a caption, so a
+# 2016 Mazda 6 shot shows for every Mazda 6 search. Keying on the exact year
+# would leave almost every search empty until the library got large.
+def vehicle_key(make, model):
+    key = f"{(make or '').strip().lower()} {(model or '').strip().lower()}"
+    return re.sub(r"[^a-z0-9]+", "", key)
+
+def is_admin_user(conn, user_id):
+    if not user_id:
+        return False
+    row = conn.execute("SELECT is_admin FROM users WHERE id=?", (user_id,)).fetchone()
+    return bool(row and row["is_admin"])
+
+@app.route("/api/vehicle_photos")
+def get_vehicle_photos():
+    """Approved photos for a vehicle. Public — no login needed to look."""
+    key = vehicle_key(request.args.get("make", ""), request.args.get("model", ""))
+    if not key:
+        return jsonify([])
+    conn = get_db_connection()
+    rows = conn.execute("""
+        SELECT id, image, caption, year, username, created_at
+        FROM vehicle_photos
+        WHERE vehicle_key=? AND status='approved'
+        ORDER BY id DESC LIMIT 30
+    """, (key,)).fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
+
+@csrf.exempt
+@app.route("/api/vehicle_photos/submit", methods=["POST"])
+@limiter.limit("10 per hour")
+def submit_vehicle_photo():
+    if "user_id" not in session:
+        return jsonify({"error": "Sign in to submit a photo"}), 401
+
+    make  = sanitize(request.form.get("make", "")).strip()
+    model = sanitize(request.form.get("model", "")).strip()
+    year  = sanitize(request.form.get("year", "")).strip()[:4]
+    caption = sanitize(request.form.get("caption", "")).strip()[:140]
+    key = vehicle_key(make, model)
+    if not key:
+        return jsonify({"error": "Missing vehicle"}), 400
+
+    image_path = save_upload("photo")
+    if not image_path:
+        return jsonify({"error": "No valid image provided"}), 400
+
+    conn = get_db_connection()
+    # Cap pending submissions per user so the queue can't be flooded.
+    pending = conn.execute(
+        "SELECT COUNT(*) FROM vehicle_photos WHERE user_id=? AND status='pending'",
+        (session["user_id"],)
+    ).fetchone()[0]
+    if pending >= 5:
+        conn.close()
+        return jsonify({"error": "You already have 5 photos awaiting review."}), 429
+
+    uname = conn.execute("SELECT username FROM users WHERE id=?",
+                         (session["user_id"],)).fetchone()
+    conn.execute("""
+        INSERT INTO vehicle_photos
+            (vehicle_key, vehicle_type, make, model, year, image, caption,
+             user_id, username, status, created_at)
+        VALUES (?,?,?,?,?,?,?,?,?, 'pending', ?)
+    """, (key, sanitize(request.form.get("type", "car")), make, model, year,
+          image_path, caption, session["user_id"],
+          uname["username"] if uname else "",
+          datetime.utcnow().strftime("%Y-%m-%d %H:%M")))
+    conn.commit(); conn.close()
+    return jsonify({"message": "Thanks — your photo is queued for review."})
+
+@app.route("/admin/photos")
+def admin_photos():
+    conn = get_db_connection()
+    if not is_admin_user(conn, session.get("user_id")):
+        conn.close()
+        return render_template("error.html", message="Not authorised."), 403
+    rows = conn.execute("""
+        SELECT * FROM vehicle_photos
+        WHERE status='pending' ORDER BY id ASC
+    """).fetchall()
+    approved = conn.execute(
+        "SELECT COUNT(*) FROM vehicle_photos WHERE status='approved'").fetchone()[0]
+    conn.close()
+    return render_template("admin_photos.html",
+                           photos=[dict(r) for r in rows], approved_count=approved)
+
+@csrf.exempt
+@app.route("/api/admin/photos/<int:photo_id>/<action>", methods=["POST"])
+def review_vehicle_photo(photo_id, action):
+    if action not in ("approve", "reject"):
+        return jsonify({"error": "Unknown action"}), 400
+    conn = get_db_connection()
+    if not is_admin_user(conn, session.get("user_id")):
+        conn.close()
+        return jsonify({"error": "Not authorised"}), 403
+
+    photo = conn.execute("SELECT * FROM vehicle_photos WHERE id=?", (photo_id,)).fetchone()
+    if not photo:
+        conn.close()
+        return jsonify({"error": "Not found"}), 404
+
+    status = "approved" if action == "approve" else "rejected"
+    conn.execute("""
+        UPDATE vehicle_photos SET status=?, reviewed_by=?, reviewed_at=? WHERE id=?
+    """, (status, session["user_id"],
+          datetime.utcnow().strftime("%Y-%m-%d %H:%M"), photo_id))
+
+    if photo["user_id"]:
+        if status == "approved":
+            add_notification(conn, photo["user_id"],
+                f"📸 Your photo of the {photo['make']} {photo['model']} is now live",
+                link=f"/compare?type={photo['vehicle_type']}")
+        else:
+            add_notification(conn, photo["user_id"],
+                f"Your photo of the {photo['make']} {photo['model']} wasn't approved")
+    conn.commit(); conn.close()
+    return jsonify({"message": status})
 
 # ─── Landing page + waitlist ──────────────────────────────────────
 @app.route("/welcome")
@@ -3840,7 +3991,9 @@ def settings():
     conn = get_db_connection()
     user = conn.execute("SELECT * FROM users WHERE id = ?", (session["user_id"],)).fetchone()
     conn.close()
-    return render_template("settings.html", user=dict(user) if user else {})
+    user_d = dict(user) if user else {}
+    return render_template("settings.html", user=user_d,
+                           is_admin=bool(user_d.get("is_admin")))
 
 
 @csrf.exempt

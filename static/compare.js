@@ -458,6 +458,7 @@ async function compareCars(v1Override, v2Override) {
             <div id="right-car"></div>
         </div>
         ${vsSection}
+        ${buildWildSection(v1, v2, type)}
         <div class="similarities-box">
             <h2>Similarities</h2>
             ${similarities}
@@ -475,7 +476,122 @@ async function compareCars(v1Override, v2Override) {
     `;
     document.getElementById("left-car").appendChild(card1);
     document.getElementById("right-car").appendChild(card2);
+    // The wild section renders empty above; fill the first tab now that it's
+    // actually in the DOM.
+    if (document.getElementById("wildGallery")) showWildTab(0);
     if (window.refreshIcons) window.refreshIcons();
+}
+
+// ─── "See it in the wild" ──────────────────────────────────────────
+// Owner photos beat press shots for judging a colour or a stance. Photos are
+// keyed on make+model, so any year of a model contributes to the same pool.
+let wildVehicles = [null, null];
+let wildType = "car";
+
+function buildWildSection(v1, v2, type) {
+    const usable = [v1, v2].filter(v => v && !v._notFound && v.make && v.model);
+    if (!usable.length) return "";
+    wildVehicles = [v1, v2];
+    wildType = type;
+
+    const tabs = usable.map((v, i) => `
+        <button class="wild-tab ${i === 0 ? "active" : ""}" data-wild="${i}"
+                onclick="showWildTab(${i})">${esc(v.make)} ${esc(v.model)}</button>
+    `).join("");
+
+    return `
+    <div class="wild-box">
+        <div class="wild-head">
+            <h2><i data-lucide="camera"></i> See it in the wild</h2>
+            <p class="wild-sub">Real photos from owners — not press shots.</p>
+        </div>
+        <div class="wild-tabs">${tabs}</div>
+        <div id="wildGallery" class="wild-gallery"></div>
+        <div class="wild-submit-row">
+            <label class="btn btn-ghost wild-upload-btn">
+                <i data-lucide="upload"></i> Add your photo
+                <input type="file" accept="image/*" style="display:none"
+                       onchange="submitWildPhoto(this)">
+            </label>
+            <span class="wild-note">Reviewed before it appears.</span>
+        </div>
+    </div>`;
+}
+
+let wildActive = 0;
+async function showWildTab(i) {
+    wildActive = i;
+    document.querySelectorAll(".wild-tab").forEach(t =>
+        t.classList.toggle("active", +t.dataset.wild === i));
+
+    const gallery = document.getElementById("wildGallery");
+    const v = wildVehicles[i];
+    if (!gallery || !v) return;
+    gallery.innerHTML = `<p class="wild-empty">Loading…</p>`;
+
+    let photos = [];
+    try {
+        const res = await fetch(`/api/vehicle_photos?make=${encodeURIComponent(v.make)}`
+                              + `&model=${encodeURIComponent(v.model)}`);
+        if (res.ok) photos = await res.json();
+    } catch (e) {}
+
+    if (!photos.length) {
+        gallery.innerHTML = `<p class="wild-empty">
+            No photos yet for the ${esc(v.make)} ${esc(v.model)}. Be the first to add one.
+        </p>`;
+        return;
+    }
+
+    gallery.innerHTML = photos.map(p => `
+        <figure class="wild-shot">
+            <img src="${p.image}" alt="${esc(v.make)} ${esc(v.model)}" loading="lazy"
+                 onclick="openWildLightbox('${p.image}')">
+            <figcaption>
+                ${p.year ? `<strong>${esc(p.year)}</strong> ` : ""}
+                ${p.caption ? esc(p.caption) : ""}
+                <span class="wild-credit">@${esc(p.username)}</span>
+            </figcaption>
+        </figure>
+    `).join("");
+    if (window.refreshIcons) window.refreshIcons();
+}
+
+async function submitWildPhoto(input) {
+    const file = input.files && input.files[0];
+    if (!file) return;
+    const v = wildVehicles[wildActive];
+    if (!v) return;
+
+    const caption = prompt(
+        `Add a short caption for your ${v.make} ${v.model} (optional) — colour, wheels, mods:`
+    );
+    if (caption === null) { input.value = ""; return; }   // cancelled
+
+    const fd = new FormData();
+    fd.append("photo", file);
+    fd.append("make",  v.make);
+    fd.append("model", v.model);
+    fd.append("year",  v.year || "");
+    fd.append("type",  wildType);
+    fd.append("caption", caption || "");
+
+    try {
+        const res  = await fetch("/api/vehicle_photos/submit", { method: "POST", body: fd });
+        const data = await res.json();
+        alert(data.message || data.error || "Something went wrong.");
+    } catch (e) {
+        alert("Upload failed. Please try again.");
+    }
+    input.value = "";
+}
+
+function openWildLightbox(src) {
+    const box = document.createElement("div");
+    box.className = "wild-lightbox";
+    box.innerHTML = `<img src="${src}" alt="">`;
+    box.onclick = () => box.remove();
+    document.body.appendChild(box);
 }
 
 // Normalize make names for API Ninjas (doesn't like hyphens or full brand names)

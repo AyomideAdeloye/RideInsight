@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="legal-page admin-photos-page">
+
+    <div class="legal-header">
+        <h2><i data-lucide="image-check"></i> Photo Review Queue</h2>
+        <p class="legal-updated">
+            {{ photos|length }} awaiting review · {{ approved_count }} approved so far
+        </p>
+    </div>
+
+    {% if not photos %}
+        <div class="legal-body">
+            <p style="margin:0;">Nothing waiting. New submissions land here automatically.</p>
+        </div>
+    {% else %}
+        <div class="review-grid">
+        {% for p in photos %}
+            <div class="review-card" id="review-{{ p.id }}">
+                <img src="{{ p.image }}" alt="Submitted photo" loading="lazy">
+                <div class="review-body">
+                    <strong>{{ p.year }} {{ p.make }} {{ p.model }}</strong>
+                    {% if p.caption %}<p class="review-caption">"{{ p.caption }}"</p>{% endif %}
+                    <p class="review-meta">
+                        by <a href="/profile/{{ p.username }}">@{{ p.username }}</a>
+                        · {{ p.created_at }}
+                    </p>
+                    <div class="review-actions">
+                        <button class="btn btn-primary" onclick="reviewPhoto({{ p.id }}, 'approve')">
+                            <i data-lucide="check"></i> Approve
+                        </button>
+                        <button class="btn btn-danger" onclick="reviewPhoto({{ p.id }}, 'reject')">
+                            <i data-lucide="x"></i> Reject
+                        </button>
+                    </div>
+                </div>
+            </div>
+        {% endfor %}
+        </div>
+    {% endif %}
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function reviewPhoto(id, action) {
+    const card = document.getElementById(`review-${id}`);
+    card.style.opacity = "0.5";
+    try {
+        const res = await fetch(`/api/admin/photos/${id}/${action}`, { method: "POST" });
+        if (!res.ok) throw new Error();
+        card.remove();
+        if (!document.querySelectorAll(".review-card").length) location.reload();
+    } catch (e) {
+        card.style.opacity = "1";
+        alert("That didn't go through. Try again.");
+    }
+}
+</script>
+{% endblock %}
