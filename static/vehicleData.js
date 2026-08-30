@@ -267,6 +267,48 @@ const motoData = [
     { make:"Royal Enfield", model:"Meteor 350",  type:"Cruiser", displacement:"349", engine:"J-platform Single Cylinder", power:"20 HP @ 6,100 RPM", torque:"27 Nm @ 4,000 RPM", weight_kg:191 },
     { make:"Royal Enfield", model:"Interceptor 650",type:"Naked",displacement:"648",engine:"Parallel Twin SOHC", power:"47 HP @ 7,250 RPM", torque:"52 Nm @ 5,250 RPM", weight_kg:213 },
     { make:"Royal Enfield", model:"Continental GT 650",type:"Sport",displacement:"648",engine:"Parallel Twin SOHC", power:"47 HP @ 7,250 RPM", torque:"52 Nm @ 5,250 RPM", weight_kg:198 },
+
+    // ────────────────────────────────────────────────────────────────
+    // Added from owner-collected spec sheets. Weights are curb/wet in kg
+    // (converted from lbs where the source quoted pounds); torque in Nm;
+    // seat height in mm. Consistent with the entries above.
+    // ────────────────────────────────────────────────────────────────
+    // ── Aprilia ──
+    { make:"Aprilia", model:"RS 660", type:"Sport", displacement:"659", engine:"Parallel Twin DOHC", power:"105 HP", torque:"70 Nm", weight_kg:183, seat_height_mm:820 },
+    { make:"Aprilia", model:"Tuono 660", type:"Naked", displacement:"659", engine:"Parallel Twin DOHC", power:"95 HP", torque:"67 Nm", weight_kg:183, seat_height_mm:820 },
+    // ── CFMoto ──
+    { make:"CFMoto", model:"450SS", type:"Sport", displacement:"449", engine:"Parallel Twin DOHC", power:"50 HP", torque:"40 Nm", weight_kg:169, seat_height_mm:795 },
+    // ── Ducati ──
+    { make:"Ducati", model:"Scrambler Icon", type:"Naked", displacement:"803", engine:"L-Twin Air-Cooled", power:"73 HP", torque:"65 Nm", weight_kg:185, seat_height_mm:795 },
+    // ── Harley-Davidson ──
+    { make:"Harley-Davidson", model:"Nightster", type:"Cruiser", displacement:"975", engine:"V-Twin DOHC", power:"91 HP", torque:"97 Nm", weight_kg:218.2, seat_height_mm:688 },
+    // ── Honda ──
+    { make:"Honda", model:"CB500X", type:"Adventure", displacement:"471", engine:"Parallel Twin DOHC", power:"47 HP", torque:"43 Nm", weight_kg:199.1, seat_height_mm:830 },
+    { make:"Honda", model:"CB300R", type:"Naked", displacement:"286", engine:"Single Cylinder DOHC", power:"31 HP", torque:"27.5 Nm", weight_kg:143.6, seat_height_mm:803 },
+    { make:"Honda", model:"NC750X", type:"Adventure", displacement:"745", engine:"Parallel Twin SOHC", power:"58 HP", torque:"69 Nm", weight_kg:214.1, seat_height_mm:802 },
+    // ── Husqvarna ──
+    { make:"Husqvarna", model:"Svartpilen 401", type:"Naked", displacement:"399", engine:"Single Cylinder DOHC", power:"45 HP", torque:"39 Nm", weight_kg:159, seat_height_mm:820 },
+    // ── Indian ──
+    { make:"Indian", model:"Scout Bobber", type:"Cruiser", displacement:"1250", engine:"V-Twin DOHC", power:"105 HP", torque:"111 Nm", weight_kg:241.3, seat_height_mm:650 },
+    { make:"Indian", model:"FTR 1200", type:"Naked", displacement:"1203", engine:"V-Twin DOHC", power:"120 HP", torque:"118 Nm", weight_kg:233.4, seat_height_mm:780 },
+    // ── KTM ──
+    { make:"KTM", model:"390 Duke", type:"Naked", displacement:"399", engine:"Single Cylinder DOHC", power:"44 HP", torque:"39 Nm", weight_kg:165, seat_height_mm:800 },
+    { make:"KTM", model:"790 Duke", type:"Naked", displacement:"799", engine:"Parallel Twin DOHC", power:"105 HP", torque:"87 Nm", weight_kg:188, seat_height_mm:825 },
+    { make:"KTM", model:"890 Adventure", type:"Adventure", displacement:"889", engine:"Parallel Twin DOHC", power:"105 HP", torque:"100 Nm", weight_kg:210.5, seat_height_mm:831 },
+    // ── MV Agusta ──
+    { make:"MV Agusta", model:"Brutale 800", type:"Naked", displacement:"798", engine:"Inline 3 DOHC", power:"112 HP", torque:"85 Nm", weight_kg:193.7, seat_height_mm:830 },
+    // ── Moto Guzzi ──
+    { make:"Moto Guzzi", model:"V7", type:"Cruiser", displacement:"853", engine:"V-Twin OHV", power:"67 HP", torque:"79 Nm", weight_kg:218.9, seat_height_mm:780 },
+    // ── Royal Enfield ──
+    { make:"Royal Enfield", model:"Himalayan", type:"Adventure", displacement:"452", engine:"Single Cylinder DOHC", power:"40 HP", torque:"40 Nm", weight_kg:205.9, seat_height_mm:826 },
+    // ── Suzuki ──
+    { make:"Suzuki", model:"GSX-8S", type:"Naked", displacement:"776", engine:"Parallel Twin DOHC", power:"83 HP", torque:"78 Nm", weight_kg:201.8, seat_height_mm:810 },
+    // ── Triumph ──
+    { make:"Triumph", model:"Street Triple", type:"Naked", displacement:"765", engine:"Inline 3 DOHC", power:"128 HP", torque:"80 Nm", weight_kg:188, seat_height_mm:826 },
+    // ── Yamaha ──
+    { make:"Yamaha", model:"XSR900", type:"Naked", displacement:"890", engine:"Inline 3 DOHC", power:"117 HP", torque:"93 Nm", weight_kg:192.8, seat_height_mm:810 },
+    // ── Zero ──
+    { make:"Zero", model:"SR/F", type:"Naked", displacement:"—", engine:"Electric AC Motor", power:"112 HP", torque:"190 Nm", weight_kg:227, seat_height_mm:787 },
 ];
 
 function searchMotoData(make, model) {

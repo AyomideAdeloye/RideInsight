@@ -850,6 +850,7 @@ function buildMotoCard(m, fallbackName) {
                 <li><strong>Power:</strong> ${m.power || "N/A"}</li>
                 <li><strong>Torque:</strong> ${m.torque || "N/A"}</li>
                 <li><strong>Weight:</strong> ${m.total_weight || (m.weight_kg ? `${m.weight_kg} kg (${Math.round(m.weight_kg * 2.205)} lbs)` : "N/A")}</li>
+                ${m.seat_height_mm ? `<li><strong>Seat Height:</strong> ${m.seat_height_mm} mm (${(m.seat_height_mm / 25.4).toFixed(1)} in)</li>` : ""}
             </ul>
         </div>
         ${buildCostBox(m, "motorcycle")}`;
@@ -994,6 +995,25 @@ function estimateCosts(v, type) {
     else if (type === "motorcycle") {
         const make = (v.make || "").toLowerCase();
         const disp = parseInt(v.displacement) || 600;
+
+        // Electric bikes have no displacement, so every size-based rule below
+        // would fall back to the 600cc default and charge them for petrol.
+        const isElectric = /electric/i.test(v.engine || "")
+                        || /^zero$/i.test(v.make || "")
+                        || v.fuel_type === "electric";
+        if (isElectric) {
+            const year = parseInt(v.year) || 2022;
+            const age  = new Date().getFullYear() - year;
+            // Electric motorcycles sit in a narrow, premium band regardless of
+            // "size", and depreciate faster than petrol equivalents.
+            price = Math.round(21000 * depreciationFactor(age) * 0.9 / 250) * 250;
+            insurance = 850;
+            // ~3,000 miles at roughly 4.5 mi/kWh, US average ~$0.17/kWh.
+            fuelPerYear = Math.round((MOTO_MILES / 4.5) * 0.17);
+            // No oil, no filters, belt drive instead of chain.
+            maintenancePerYear = 260;
+            return { price, insurance, fuelPerYear, maintenancePerYear };
+        }
 
         const premiumBrands = ["ducati","bmw","triumph","aprilia","mv agusta",
                                "harley","indian","moto guzzi"];
