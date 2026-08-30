@@ -37,7 +37,13 @@ const MUSCLECAR_CATEGORIES = [
         key:      "Spoiler",
         label:    "Spoiler",
         icon:     "flag",
+        // Keep the lip spoiler as the loaded look; "None" is opt-in.
+        default:  "Spoiler_A",
         variants: [
+            // A delete option: no geometry of its own, so alwaysShow keeps it
+            // in the list. Selecting it hides every other spoiler and nothing
+            // takes their place.
+            { name: "Spoiler_None", label: "None", price: 0, alwaysShow: true },
             { name: "Spoiler_A", label: "Lip Spoiler", price: 0 },
             { name: "Spoiler_B", label: "Sport Wing",  price: 400 },
             { name: "Spoiler_C", label: "GT Wing",     price: 950 },
@@ -335,7 +341,11 @@ function rebuildPartIndex() {
     }));
     ALL_PART_MESHES = PART_CATEGORIES.flatMap(c => c.variants.map(v => v.name));
     Object.keys(selected).forEach(k => delete selected[k]);
-    PART_CATEGORIES.forEach(c => { selected[c.key] = c.variants[0].name; });
+    // A category can name its default so that adding an option to the front of
+    // the list (like "None") doesn't silently change how the car loads.
+    PART_CATEGORIES.forEach(c => {
+        selected[c.key] = c.default || c.variants[0].name;
+    });
 }
 
 // (An ALWAYS_VISIBLE list used to live here. It was dead code, and it listed
