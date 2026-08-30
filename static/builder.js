@@ -1147,14 +1147,46 @@ const SCENE_ENV = {
     // bigger than the room), and the car is 3 wide sitting at x=0. Past 4 the
     // left wall crosses the car and it hangs off the bay.
     offsetX:   3,       // manual nudge after auto-fit
-    offsetY:   0,
+    // The floor is a zero-thickness plane, so grounding puts it at exactly
+    // y=0 — the same plane the tyres rest on. Two coincident surfaces read as
+    // wheels sunk into the floor. A hair below clears it without a visible gap.
+    offsetY:   -0.02,
     offsetZ:   -2,      // push the back wall away from the car
 };
 let envModel = null;
 
+// ── GLTF loader factory ────────────────────────────────────────────────────
+// Draco-compressed GLBs typically drop geometry by 80-90% with no visible
+// change. Compression is a storage format only — mesh names, hierarchy,
+// materials and UVs come back identical, so RI-VAS naming, part swapping and
+// paint are unaffected.
+//
+// The decoder is attached whenever DRACOLoader is available. Uncompressed
+// files ignore it entirely, so mixed compressed/uncompressed models work side
+// by side and a CDN failure only affects compressed files.
+let _dracoLoader = null;
+function makeGLTFLoader() {
+    const loader = new THREE.GLTFLoader();
+    if (typeof THREE.DRACOLoader === "function") {
+        if (!_dracoLoader) {
+            _dracoLoader = new THREE.DRACOLoader();
+            // Decoder shipped with this exact three version, so loader and
+            // decoder can't drift apart. No decoderConfig type: the loader
+            // picks WebAssembly when available and falls back to JS, and WASM
+            // decodes a car-sized mesh several times faster.
+            _dracoLoader.setDecoderPath(
+                "https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/libs/draco/");
+        }
+        loader.setDRACOLoader(_dracoLoader);
+    } else {
+        console.warn("DRACOLoader unavailable — compressed models will not load.");
+    }
+    return loader;
+}
+
 function loadEnvironment() {
     if (!SCENE_ENV.glb) return;
-    const loader = new THREE.GLTFLoader();
+    const loader = makeGLTFLoader();
     loader.load(
         SCENE_ENV.glb + "?v=" + Date.now(),
         (gltf) => {
@@ -1229,7 +1261,7 @@ function loadEnvironment() {
 }
 
 function loadModel() {
-    const loader  = new THREE.GLTFLoader();
+    const loader  = makeGLTFLoader();
     const overlay = document.getElementById("modelLoadOverlay");
     const status  = document.getElementById("modelLoadStatus");
 
@@ -1311,9 +1343,15 @@ function loadModel() {
             carModel.traverse(node => {
                 if (!node.isMesh || !node.visible || !node.geometry) return;
                 const nm = node.userData.rivasName || effectiveName(node);
-                // ONLY the four wheel tires — props like Tire_Stack must not
-                // count, or the car gets lifted to clear them.
-                if (!/^Tire_(FL|FR|BL|BR|RL|RR)\b/i.test(nm)) return;
+                // Whatever actually touches the ground at each corner. Tires
+                // where they're modelled separately (Mazda), otherwise the
+                // wheel itself (the muscle car's SM_Wheel set includes its
+                // tyre). A rim can also sit fractionally lower than the tyre
+                // bounding box, which showed up as wheels sunk into the floor.
+                //
+                // Anchored to a corner suffix so props are excluded — Tire_Stack
+                // would otherwise lift the whole car to clear it.
+                if (!/^(?:Tire|SM_Wheel|Wheel_[A-Z])(?:_[A-Z])?_(FL|FR|BL|BR|RL|RR)(?:_\d+)?$/i.test(nm)) return;
                 if (!node.geometry.boundingBox) node.geometry.computeBoundingBox();
                 tireBox.union(node.geometry.boundingBox.clone().applyMatrix4(node.matrixWorld));
                 haveTires = true;
