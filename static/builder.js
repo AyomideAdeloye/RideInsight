@@ -17,11 +17,16 @@
 // Slots self-manage: a car only shows the ones actually present in its GLB.
 const SPOILER_VARIANTS = [
     { name: "Spoiler_None", label: "None",        price: 0,   alwaysShow: true },
-    { name: "Spoiler_A",    label: "Lip Spoiler", price: 0   },
-    { name: "Spoiler_B",    label: "Sport Wing",  price: 400 },
-    { name: "Spoiler_C",    label: "GT Wing",     price: 950 },
-    // TODO: price + retailer link once sourced
-    { name: "Spoiler_D",    label: "Flat Trunk",  price: 0   },
+    { name: "Spoiler_A",    label: "Lip Spoiler", price: 3290,
+      url: "https://bulletproofautomotive.com/product/adro-m2-hd-edition-at-m3/" },
+    { name: "Spoiler_B",    label: "Sport Wing",  price: 51,
+      url: "https://www.vevor.com/trunk-spoiler-c_11517/vevor-universal-rear-spoiler-46-3-gt-style-trunk-wing-for-sedans-and-coupes-p_010829674214" },
+    // ECS "Functional Aerodynamic Rear Wing Kit", universal fitment.
+    // Listed at "starting at $1,652.78" — the entry configuration.
+    { name: "Spoiler_C",    label: "GT Wing",     price: 1653,
+      url: "https://www.ecstuning.com/b-ecs-parts/functional-aerodynamic-rear-wing-kit-universal-fitment/013903la~dk/" },
+    { name: "Spoiler_D",    label: "Flat Trunk",  price: 270,
+      url: "https://www.darspoilers.com/products/acura-rsx-factory-post-no-light-spoiler-2002-2006?variant=31758423556" },
 ];
 
 // Each car loads wearing the spoiler it actually ships with.
@@ -1781,7 +1786,7 @@ function buildPartSelectorUI() {
 
         // Parts sourced from real retailers may not fit every vehicle —
         // the builder is for visualising looks and gauging cost.
-        const needsFitmentNote = /Wheels|Brakes|Tires/i.test(cat.key);
+        const needsFitmentNote = /Wheels|Brakes|Tires|Spoiler/i.test(cat.key);
 
         const section = document.createElement("div");
         section.className = "builder-section";
@@ -2013,8 +2018,18 @@ function updateBuildSummary() {
     const items = [];
 
     // Visual upgrades (non-stock selections)
+    //
+    // A category's default is what the car already wears, so it isn't a mod
+    // and isn't billed — otherwise the muscle car would open at +$3,290 for
+    // the lip spoiler it ships with. The same part still costs full price on
+    // a car that doesn't come with it, which is why this is per-category
+    // rather than a flag on the variant.
     let visualTotal = 0;
-    Object.values(selected).forEach(variantName => {
+    PART_CATEGORIES.forEach(cat => {
+        const variantName = selected[cat.key];
+        const stock = cat.default || (cat.variants[0] && cat.variants[0].name);
+        if (!variantName || variantName === stock) return;
+
         const info = VARIANT_INFO[variantName];
         if (info && info.price > 0) {
             visualTotal += info.price;
