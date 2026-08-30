@@ -904,6 +904,30 @@ function buildSimilarities(v1, v2, type) {
 
 
 // ─── Cost Estimation ─────────────────────────────────────────────
+// Shared assumptions, kept in one place so they can be revised together
+// rather than hunted down as magic numbers.
+//   Pump price: US national average was ~$4.14 in Aug 2026; the 2026 annual
+//   average is ~$3.76. $3.90 sits between the two rather than tracking a spike.
+//   Marina fuel typically runs about a dollar over road fuel.
+const GAS_PER_GAL    = 3.90;
+const MARINA_PER_GAL = 5.00;
+const MILES_PER_YEAR = 12000;   // cars
+const MOTO_MILES     = 3000;    // bikes are ridden far less than they're owned
+const BOAT_HOURS     = 50;      // typical recreational use is 50-100 hrs/yr
+
+// Non-cumulative depreciation. The previous motorcycle branch applied two
+// multipliers in sequence, so anything over 7 years old got 0.75 x 0.55 = 0.41
+// — a much steeper drop than intended.
+function depreciationFactor(age) {
+    if (age <= 0)  return 1.00;
+    if (age <= 1)  return 0.90;
+    if (age <= 3)  return 0.78;
+    if (age <= 5)  return 0.66;
+    if (age <= 8)  return 0.52;
+    if (age <= 12) return 0.40;
+    return 0.32;
+}
+
 function estimateCosts(v, type) {
     let price = 0, insurance = 0, fuelPerYear = 0, maintenancePerYear = 0;
 
@@ -958,7 +982,7 @@ function estimateCosts(v, type) {
 
         // Fuel — avg 12,000 miles/yr, ~$3.50/gal
         const mpg = disp <= 1.5 ? 34 : disp <= 2.0 ? 30 : disp <= 3.0 ? 24 : disp <= 4.0 ? 18 : 14;
-        fuelPerYear = v.fuel_type === "electric" ? 600 : Math.round((12000 / mpg) * 3.50);
+        fuelPerYear = v.fuel_type === "electric" ? 600 : Math.round((MILES_PER_YEAR / mpg) * GAS_PER_GAL);
 
         // Maintenance
         if (ultra.some(b => make.includes(b)))   maintenancePerYear = 3500;
@@ -987,16 +1011,25 @@ function estimateCosts(v, type) {
 
         const year = parseInt(v.year) || 2020;
         const age  = new Date().getFullYear() - year;
-        if (age > 3)  price = Math.round(price * 0.75);
-        if (age > 7)  price = Math.round(price * 0.55);
-        price = Math.round(price / 250) * 250;
+        price = Math.round(price * depreciationFactor(age) / 250) * 250;
 
-        insurance = disp >= 900 ? 900 : disp >= 600 ? 650 : 450;
-        if (premiumBrands.some(b => make.includes(b))) insurance += 300;
-        insurance = Math.round(insurance / 50) * 50;
+        // Insurance scales continuously with displacement instead of sitting in
+        // wide bands — previously every 600-899cc bike returned an identical
+        // figure, so two very different bikes showed the same running cost.
+        const isPremium = premiumBrands.some(b => make.includes(b));
+        insurance = 320 + disp * 0.55;
+        if (isPremium)  insurance *= 1.30;   // parts and theft risk
+        if (age > 10)   insurance *= 0.85;   // older bikes are cheaper to cover
+        insurance = Math.round(insurance / 25) * 25;
 
-        fuelPerYear = Math.round((8000 / 45) * 3.50); // motorcycles avg ~45 mpg
-        maintenancePerYear = 600;
+        // Economy tracks displacement: a 300 single returns roughly double a
+        // litre bike. Bikes also cover far fewer miles a year than cars.
+        const mpg = disp <= 300 ? 70 : disp <= 650 ? 55
+                  : disp <= 900 ? 45 : disp <= 1200 ? 40 : 35;
+        fuelPerYear = Math.round((MOTO_MILES / mpg) * GAS_PER_GAL);
+
+        // Tyres, chain and fluids all scale with size and output.
+        maintenancePerYear = Math.round((300 + disp * 0.32) * (isPremium ? 1.5 : 1));
     }
 
     else if (type === "boat") {
@@ -1018,8 +1051,20 @@ function estimateCosts(v, type) {
 
         // Boat insurance ~1-2% of value
         insurance = Math.round(price * 0.015 / 50) * 50;
-        fuelPerYear = Math.round(hp * 0.6 * 50 * 3.50); // rough estimate
-        maintenancePerYear = eng === "inboard" ? 2200 : 1400;
+
+        // A gas outboard at wide-open throttle burns roughly 10% of its rated
+        // horsepower in gallons per hour; cruise is 50-60% of that, so ~0.055
+        // gal/hp/hr. The old figure of 0.6 was ten times too high — it looks
+        // like the 0.5 lb/hp/hr rule was used without converting pounds to
+        // gallons — which put a 115hp bass boat at $12,000 a year in fuel.
+        const gph = hp * 0.055;
+        fuelPerYear = Math.round(gph * BOAT_HOURS * MARINA_PER_GAL);
+
+        // Maintenance scales with size; a 30-footer costs more to service than
+        // a 17-foot aluminium hull with the same engine type.
+        maintenancePerYear = Math.round(
+            (eng === "inboard" ? 1600 : 900) + len * 30
+        );
     }
 
     return { price, insurance, fuelPerYear, maintenancePerYear };
