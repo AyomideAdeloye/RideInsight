@@ -1,0 +1,30 @@
+# Normalise line endings so files edited on Linux and Windows don't show up
+# as fully rewritten. Text is stored LF in the repo; Git checks it out with
+# whatever your platform uses.
+* text=auto
+
+# Explicitly binary — these must never have line endings touched.
+*.glb   binary
+*.blend binary
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.webp  binary
+*.ico   binary
+*.mp4   binary
+*.woff  binary
+*.woff2 binary
+*.ttf   binary
+*.db    binary
+*.xlsx  binary
+*.docx  binary
+*.pdf   binary
+
+# Windows-only scripts keep CRLF so PowerShell is happy.
+*.ps1   text eol=crlf
+*.bat   text eol=crlf
+*.cmd   text eol=crlf
+
+# Shell scripts must keep LF or they won't run.
+*.sh    text eol=lf
