@@ -531,6 +531,26 @@ function synthesizeBoatEntry(make, model, year) {
     };
 }
 
+// Counts how many of the specs we actually display are populated on a row,
+// so we can pick the most complete variant the API returned rather than the
+// arbitrary first one. Power and torque are weighted — they're the fields
+// most often missing and the ones the VS section leans on.
+function specScore(row) {
+    if (!row) return 0;
+    const has = k => {
+        const v = row[k];
+        if (v === null || v === undefined) return false;
+        const s = String(v).trim().toLowerCase();
+        return s !== "" && s !== "n/a" && s !== "null";
+    };
+    let n = 0;
+    if (has("power"))  n += 2;
+    if (has("torque")) n += 2;
+    ["displacement", "engine", "total_weight", "type", "top_speed",
+     "transmission", "fuel_capacity"].forEach(k => { if (has(k)) n += 1; });
+    return n;
+}
+
 // Drops null/undefined/""/"N/A" keys so an incomplete API row can be spread
 // over local data without its blanks wiping out the good values.
 function stripEmpty(obj) {
@@ -582,7 +602,13 @@ async function searchVehicle(searchText, type = "car") {
         try {
             const response = await fetch(`/api/search_motorcycle?make=${encodeURIComponent(make)}&model=${encodeURIComponent(model)}&year=${encodeURIComponent(year)}`);
             const data = await response.json();
-            if (data && data[0]) apiResult = { ...data[0], _type: "motorcycle" };
+            // The API returns up to 30 rows for a model — trim levels, market
+            // variants, adjacent years — and completeness varies row to row.
+            // Taking data[0] threw away rows that had the specs we're missing.
+            if (Array.isArray(data) && data.length) {
+                const best = data.reduce((a, b) => specScore(b) > specScore(a) ? b : a);
+                apiResult = { ...best, _type: "motorcycle" };
+            }
         } catch(e) {}
 
         // Always look local up too. The API often returns a row that has

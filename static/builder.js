@@ -164,9 +164,9 @@ const MAZDA6_GJ_CATEGORIES = [
         label:    "Brakes",
         icon:     "circle-dot",
         variants: [
-            { name: "Brake_A", label: "Stock",          price: 0 },
-            { name: "Brake_B", label: "Big Brake Kit",  price: 2800 },
-            { name: "Brake_C", label: "Drilled Rotors", price: 1600 },
+            { name: "Brake_A", label: "Stock", price: 0 },
+            { name: "Brake_B", label: "Brembo GT Slotted", price: 2295,
+              url: "https://www.buybrakes.com/2016-mazda-6/big-brake-kits/bm-brembo-gt-systems-slotted-big-brake-kits" },
         ]
     },
 ];
@@ -177,13 +177,16 @@ const VEHICLES = {
         sub:        "'67 American V8",
         glb:        "/static/models/musclecar.glb",
         categories: MUSCLECAR_CATEGORIES,
+        // Modelled along X (bbox 4.92 × 2.07) with the front bumper at +X,
+        // so it needs a quarter turn to face +Z like the other two.
+        rotationY:  -Math.PI / 2,
     },
     sedan_modern: {
         label:      "Modern Sedan",
         sub:        "Midsize · 4-door",
         glb:        "/static/models/sedan_modern.glb",
         categories: [],          // no swappable parts cut yet
-        rotationY:  Math.PI,     // flip to 0 if it faces away from camera
+        rotationY:  0,           // headlights sit at +Z — already faces camera
     },
     mazda6_gj: {
         label:      "Mazda 6",
@@ -382,6 +385,51 @@ const ACCENT_FINISHES = [
 let currentAccent    = "gloss";     // most spoilers are gloss black
 let currentAccentHex = "#0b0d10";
 
+// Caliper colour is its own choice — Brembo ships these as stock options,
+// so the swatches mirror what you can actually order rather than free rein.
+const CALIPER_COLORS = [
+    { key: "red",     label: "Red",     hex: "#b02a2a" },
+    { key: "black",   label: "Black",   hex: "#141619" },
+    { key: "yellow",  label: "Yellow",  hex: "#e0b400" },
+    { key: "silver",  label: "Silver",  hex: "#b6bcc4" },
+    { key: "blue",    label: "Blue",    hex: "#1f4ed8" },
+    { key: "gold",    label: "Gold",    hex: "#c8a13c" },
+];
+let currentCaliper    = "red";
+let currentCaliperHex = "#b02a2a";
+
+function applyCaliperColor(key, customHex) {
+    const c = CALIPER_COLORS.find(x => x.key === key) || CALIPER_COLORS[0];
+    if (customHex) { currentCaliper = "custom"; currentCaliperHex = customHex; }
+    else { currentCaliper = c.key; currentCaliperHex = c.hex; }
+
+    if (carModel) {
+        const col = new THREE.Color(currentCaliperHex).convertSRGBToLinear();
+        carModel.traverse(node => {
+            if (!node.isMesh) return;
+            const rivas = node.userData.rivasName || effectiveName(node);
+            const mats  = Array.isArray(node.material) ? node.material : [node.material];
+            mats.forEach(mat => {
+                if (!mat || !mat.color) return;
+                // Same per-material rule as tint: calipers are often a
+                // primitive inside a larger wheel/brake mesh.
+                const isCaliper = /Caliper/i.test(mat.name || "")
+                               || (mats.length === 1 && /Caliper/i.test(rivas));
+                if (!isCaliper) return;
+                mat.color.copy(col);
+                mat.needsUpdate = true;
+            });
+        });
+    }
+
+    document.querySelectorAll(".caliper-btn").forEach(btn => {
+        btn.classList.toggle("active", btn.dataset.caliper === currentCaliper);
+    });
+    const picker = document.getElementById("caliperCustomColor");
+    if (picker && customHex) picker.value = customHex;
+    updateBuildSummary();
+}
+
 function applyAccent(key, customHex) {
     const f = ACCENT_FINISHES.find(x => x.key === key) || ACCENT_FINISHES[1];
     currentAccent = f.key;
@@ -428,13 +476,20 @@ function applyGlassTint(key, colorHex) {
         carModel.traverse(node => {
             if (!node.isMesh) return;
             const rivas = node.userData.rivasName || effectiveName(node);
-            const isGlass = isGlassPart(rivas) || isGlassPart(
-                (Array.isArray(node.material) ? node.material[0] : node.material)?.name
-            );
-            if (!isGlass) return;
             const mats = Array.isArray(node.material) ? node.material : [node.material];
             mats.forEach(mat => {
                 if (!mat || !mat.color) return;
+
+                // Decide per MATERIAL, not per mesh. One mesh can carry paint,
+                // chrome and glass as separate primitives — the muscle car's
+                // "Body" mesh does exactly that, with Car_GlassWindow buried
+                // among them. Testing only material[0] missed it entirely, so
+                // tint silently did nothing on that car.
+                // The mesh-name fallback is only safe on single-material meshes,
+                // where the name unambiguously describes the whole thing.
+                const isGlass = isGlassPart(mat.name)
+                             || (mats.length === 1 && isGlassPart(rivas));
+                if (!isGlass) return;
                 mat.color.copy(col);
                 mat.transparent = true;
                 mat.opacity     = level.opacity;
@@ -521,6 +576,53 @@ function buildAccentUI() {
                 <span class="accent-custom-label">Custom</span>
                 <input type="color" id="accentCustomColor" value="${currentAccentHex}"
                        onchange="applyAccent('custom', this.value)">
+            </div>
+        </div>
+    `;
+    container.appendChild(section);
+}
+
+function buildCaliperUI() {
+    const container = document.getElementById("categorySections");
+    if (!container) return;
+
+    // Only worth showing if the car actually has calipers modelled.
+    let hasCaliper = false;
+    if (carModel) {
+        carModel.traverse(node => {
+            if (hasCaliper || !node.isMesh) return;
+            const rivas = node.userData.rivasName || effectiveName(node);
+            const mats  = Array.isArray(node.material) ? node.material : [node.material];
+            if (/Caliper/i.test(rivas) || mats.some(m => /Caliper/i.test(m?.name || ""))) {
+                hasCaliper = true;
+            }
+        });
+    }
+    if (!hasCaliper) return;
+
+    const header = document.createElement("div");
+    header.className = "builder-section-group-label";
+    header.innerHTML = `<i data-lucide="circle-dot"></i> Caliper Colour`;
+    container.appendChild(header);
+
+    const section = document.createElement("div");
+    section.className = "builder-section";
+    section.innerHTML = `
+        <div class="builder-section-body">
+            <div class="accent-row">
+                ${CALIPER_COLORS.map(c => `
+                    <button class="accent-btn caliper-btn ${c.key === currentCaliper ? "active" : ""}"
+                            data-caliper="${c.key}"
+                            onclick="applyCaliperColor('${c.key}')">
+                        <span class="accent-swatch" style="background:${c.hex};"></span>
+                        <span class="accent-label">${c.label}</span>
+                    </button>
+                `).join("")}
+            </div>
+            <div class="accent-custom-row">
+                <span class="accent-custom-label">Custom</span>
+                <input type="color" id="caliperCustomColor" value="${currentCaliperHex}"
+                       onchange="applyCaliperColor('custom', this.value)">
             </div>
         </div>
     `;
@@ -699,7 +801,8 @@ function styleForPart(name) {
 
     // Brake calipers / rotors — swappable big-brake kits
     if (/Caliper/i.test(name))
-        return { color: 0xb02a2a, roughness: 0.35, metalness: 0.5 };
+        return { color: new THREE.Color(currentCaliperHex).getHex(),
+                 roughness: 0.35, metalness: 0.5 };
     if (/Brake|Rotor|Disc/i.test(name))
         return { color: 0x6e737a, roughness: 0.4, metalness: 0.8 };
 
@@ -964,7 +1067,9 @@ const SCENE_ENV = {
     scale:     null,
     fitDepth:  22,      // car is 7 units long, so ~3 car-lengths of bay
     rotationY: 0,       // radians — spin the garage to face the camera
-    offsetX:   0,       // manual nudge after auto-fit
+    // Camera sits at +X/+Z, so +X reads as screen-right. Pushing the bay
+    // right parks the car on its left rather than dead centre.
+    offsetX:   6,       // manual nudge after auto-fit
     offsetY:   0,
     offsetZ:   -2,      // push the back wall away from the car
 };
@@ -1163,9 +1268,11 @@ function loadModel() {
             // "not modelled yet" and the whole category is hidden.)
             rebuildCustomizationUI();
 
-            // Apply default paint + tint
+            // Apply default paint + tint + caliper colour
             applyPaint(currentPaintHex);
             applyGlassTint(currentTint);
+            applyCaliperColor(currentCaliper,
+                              currentCaliper === "custom" ? currentCaliperHex : null);
 
             if (overlay) overlay.style.display = "none";
             if (window.refreshIcons) window.refreshIcons();
@@ -1211,6 +1318,7 @@ function rebuildCustomizationUI() {
     buildPartSelectorUI();
     buildFinishUI();
     buildAccentUI();
+    buildCaliperUI();
     buildTintUI();
     buildPerfModsUI();
     if (window.refreshIcons) window.refreshIcons();
@@ -1919,6 +2027,8 @@ async function saveBuild() {
     // Window tint
     parts.push({ category: "accent", name: currentAccent, cost: 0,
                  effect: currentAccentHex, icon: currentAccentHex });
+    parts.push({ category: "caliper", name: currentCaliper, cost: 0,
+                 effect: currentCaliperHex, icon: currentCaliperHex });
     const finLevel = PAINT_FINISHES.find(f => f.key === currentFinish);
     parts.push({ category: "finish", name: currentFinish, cost: finLevel?.price || 0,
                  effect: finLevel ? finLevel.label : "", icon: "" });
@@ -2014,6 +2124,8 @@ async function loadBuild(id) {
                 swapPart(cat, p.name);
             } else if (p.category === "accent") {
                 applyAccent(p.name, p.name === "custom" ? (p.icon || p.effect) : null);
+            } else if (p.category === "caliper") {
+                applyCaliperColor(p.name, p.name === "custom" ? (p.icon || p.effect) : null);
             } else if (p.category === "finish") {
                 applyFinish(p.name);
             } else if (p.category === "tint") {
