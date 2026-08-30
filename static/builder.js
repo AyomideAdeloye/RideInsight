@@ -164,9 +164,12 @@ const MAZDA6_GJ_CATEGORIES = [
         label:    "Brakes",
         icon:     "circle-dot",
         variants: [
-            { name: "Brake_A", label: "Stock", price: 0 },
-            { name: "Brake_B", label: "Brembo GT Slotted", price: 2295,
+            // Brake_A IS the Brembo kit — the modelled calipers/rotors were
+            // rebuilt as the GT slotted set, so this slot is the real product.
+            { name: "Brake_A", label: "Brembo GT Slotted", price: 2295,
               url: "https://www.buybrakes.com/2016-mazda-6/big-brake-kits/bm-brembo-gt-systems-slotted-big-brake-kits" },
+            // Slot reserved: export Brake_B_FL/FR/BL/BR and it appears here.
+            // { name: "Brake_B", label: "…", price: 0 },
         ]
     },
 ];
@@ -1069,7 +1072,10 @@ const SCENE_ENV = {
     rotationY: 0,       // radians — spin the garage to face the camera
     // Camera sits at +X/+Z, so +X reads as screen-right. Pushing the bay
     // right parks the car on its left rather than dead centre.
-    offsetX:   6,       // manual nudge after auto-fit
+    // Ceiling is ~4: the walled bay is only ~11 wide (the Floor plane is much
+    // bigger than the room), and the car is 3 wide sitting at x=0. Past 4 the
+    // left wall crosses the car and it hangs off the bay.
+    offsetX:   3,       // manual nudge after auto-fit
     offsetY:   0,
     offsetZ:   -2,      // push the back wall away from the car
 };
