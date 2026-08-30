@@ -38,6 +38,55 @@ const spoilerCategory = (defaultName) => ({
     variants: SPOILER_VARIANTS,
 });
 
+// ── Shared wheel catalogue ─────────────────────────────────────────────────
+// Same reasoning as spoilers: one slot name, one product, every car. These
+// were duplicated per vehicle, which meant a price or link fix had to be made
+// twice and could silently drift apart.
+//
+// Wheel_A is each car's own stock rim, so its price stays 0 — the label is
+// overridden per car where the stock wheel is a known product.
+const WHEEL_VARIANTS = [
+    { name: "Wheel_A", label: "Stock",         price: 0 },
+    { name: "Wheel_B", label: 'EV112 21"',     price: 4295,
+      url: "https://evsportline.com/products/ev112-21-porsche-taycan-wheel-set-of-4" },
+    { name: "Wheel_C", label: "SL-C13",        price: 5996,
+      url: "https://www.spluxwheels.com/products/sl-c13" },
+    { name: "Wheel_D", label: "Enkei TS-7",    price: 1152,
+      url: "https://www.carid.com/enkei-wheels/ts-7-matte-bronze-6950365539.html" },
+    { name: "Wheel_E", label: "ENKEI Triumph", price: 1131,
+      url: "https://www.fitmentindustries.com/buy-wheel-offset/543-885-6538ZP/enkei-triumph-18x85-38" },
+    { name: "Wheel_F", label: "ENKEI PF06",    price: 1609,
+      url: "https://www.fitmentindustries.com/buy-wheel-offset/545-790-8035GG/enkei-pf06-17x9-35" },
+];
+
+// `stock` lets a car describe its own Wheel_A without forking the catalogue.
+const wheelCategory = (stock) => ({
+    key:      "Wheels",
+    label:    "Wheels",
+    icon:     "circle",
+    default:  "Wheel_A",
+    variants: stock
+        ? WHEEL_VARIANTS.map(v => v.name === "Wheel_A" ? { ...v, ...stock } : v)
+        : WHEEL_VARIANTS,
+});
+
+// ── Shared brake catalogue ─────────────────────────────────────────────────
+const BRAKE_VARIANTS = [
+    { name: "Brake_A", label: "Stock", price: 0 },
+    { name: "Brake_B", label: "Brembo GT Slotted", price: 2295,
+      url: "https://www.buybrakes.com/2016-mazda-6/big-brake-kits/bm-brembo-gt-systems-slotted-big-brake-kits" },
+];
+
+const brakeCategory = (stock) => ({
+    key:      "Brakes",
+    label:    "Brakes",
+    icon:     "circle-dot",
+    default:  "Brake_A",
+    variants: stock
+        ? BRAKE_VARIANTS.map(v => v.name === "Brake_A" ? { ...v, ...stock } : v)
+        : BRAKE_VARIANTS,
+});
+
 const MUSCLECAR_CATEGORIES = [
     {
         key:      "Hood",
@@ -100,36 +149,9 @@ const MUSCLECAR_CATEGORIES = [
             { name: "RunningBoard_C", label: "Carbon",   price: 600 },
         ]
     },
-    {
-        key:      "Wheels",
-        label:    "Wheels",
-        icon:     "circle",
-        // Wheel_A is the pack's own SM_Wheel set, mapped via the vehicle's
-        // `aliases` entry. B onwards appear as you export them.
-        variants: [
-            { name: "Wheel_A", label: "Stock",         price: 0 },
-            { name: "Wheel_B", label: 'EV112 21"',     price: 4295,
-              url: "https://evsportline.com/products/ev112-21-porsche-taycan-wheel-set-of-4" },
-            { name: "Wheel_C", label: "SL-C13",        price: 5996,
-              url: "https://www.spluxwheels.com/products/sl-c13" },
-            { name: "Wheel_D", label: "Enkei TS-7",    price: 1152,
-              url: "https://www.carid.com/enkei-wheels/ts-7-matte-bronze-6950365539.html" },
-            { name: "Wheel_E", label: "ENKEI Triumph", price: 1131,
-              url: "https://www.fitmentindustries.com/buy-wheel-offset/543-885-6538ZP/enkei-triumph-18x85-38" },
-            { name: "Wheel_F", label: "ENKEI PF06",    price: 1609,
-              url: "https://www.fitmentindustries.com/buy-wheel-offset/545-790-8035GG/enkei-pf06-17x9-35" },
-        ]
-    },
-    {
-        key:      "Brakes",
-        label:    "Brakes",
-        icon:     "circle-dot",
-        variants: [
-            { name: "Brake_A", label: "Stock", price: 0 },
-            { name: "Brake_B", label: "Brembo GT Slotted", price: 2295,
-              url: "https://www.buybrakes.com/2016-mazda-6/big-brake-kits/bm-brembo-gt-systems-slotted-big-brake-kits" },
-        ]
-    },
+    // Wheel_A here is the pack's own SM_Wheel set, mapped via `aliases`.
+    wheelCategory(),
+    brakeCategory(),
 ];
 
 // ── Vehicle registry (RI-VAS) ──────────────────────────────────────────────
@@ -162,7 +184,10 @@ const MAZDA6_GJ_CATEGORIES = [
             { name: "RearBumper_A", label: "Stock", price: 0 },
         ]
     },
-    spoilerCategory("Spoiler_D"),   // ships with the flat trunk
+    // Base car has no spoiler — the flat trunk is an aftermarket part, so it
+    // has to be billed like any other. Only the muscle car actually ships
+    // with its spoiler.
+    spoilerCategory("Spoiler_None"),
     {
         key:      "FrontLip",
         label:    "Front Lip",
@@ -183,41 +208,22 @@ const MAZDA6_GJ_CATEGORIES = [
             { name: "SideSkirt_C", label: "Carbon", price: 1100 },
         ]
     },
-    {
-        key:      "Wheels",
-        label:    "Wheels",
-        icon:     "disc",
-        // Slots pre-registered — any variant whose meshes aren't in the GLB
-        // yet is hidden automatically, so new wheels appear just by exporting.
-        variants: [
-            // Prices are real retail (set of 4) — update as parts are sourced
-            { name: "Wheel_A", label: "Stock 19\"",  price: 0,
-              url: "https://www.walmart.com/ip/1320398289" },
-            { name: "Wheel_B", label: 'EV112 21"',   price: 4295,
-              url: "https://evsportline.com/products/ev112-21-porsche-taycan-wheel-set-of-4" },
-            { name: "Wheel_C", label: "SL-C13",      price: 5996,
-              url: "https://www.spluxwheels.com/products/sl-c13" },
-            { name: "Wheel_D", label: "Enkei TS-7",  price: 1152,
-              url: "https://www.carid.com/enkei-wheels/ts-7-matte-bronze-6950365539.html" },
-            { name: "Wheel_E", label: "ENKEI Triumph",  price: 1131,
-              url: "https://www.fitmentindustries.com/buy-wheel-offset/543-885-6538ZP/enkei-triumph-18x85-38" },
-            { name: "Wheel_F", label: "ENKEI PF06",     price: 1609,
-              url: "https://www.fitmentindustries.com/buy-wheel-offset/545-790-8035GG/enkei-pf06-17x9-35" },
-        ]
-    },
-    {
-        key:      "Brakes",
-        label:    "Brakes",
-        icon:     "circle-dot",
-        variants: [
-            // Brake_A IS the Brembo kit — the modelled calipers/rotors were
-            // rebuilt as the GT slotted set, so this slot is the real product.
-            { name: "Brake_A", label: "Brembo GT Slotted", price: 2295,
-              url: "https://www.buybrakes.com/2016-mazda-6/big-brake-kits/bm-brembo-gt-systems-slotted-big-brake-kits" },
-            // Slot reserved: export Brake_B_FL/FR/BL/BR and it appears here.
-            // { name: "Brake_B", label: "…", price: 0 },
-        ]
-    },
+    // The Mazda's stock 19" is a known listing, so it overrides Wheel_A.
+    wheelCategory({ label: 'Stock 19"', url: "https://www.walmart.com/ip/1320398289" }),
+    // Brake_A on this car IS the Brembo kit — the modelled calipers and rotors
+    // were rebuilt as the GT slotted set, so the stock slot is the real
+    // product. Export Brake_B_FL/FR/BL/BR to add a second option.
+    brakeCategory({ label: "Brembo GT Slotted", price: 2295,
+                    url: "https://www.buybrakes.com/2016-mazda-6/big-brake-kits/bm-brembo-gt-systems-slotted-big-brake-kits" }),
+];
+
+// ── Modern Sedan ───────────────────────────────────────────────────────────
+// Bought pack. Only wheels and brakes are cut so far; the rest of the slots
+// appear automatically as parts get exported.
+const SEDAN_CATEGORIES = [
+    wheelCategory(),
+    brakeCategory(),
+    spoilerCategory("Spoiler_None"),
 ];
 
 const VEHICLES = {
@@ -239,7 +245,7 @@ const VEHICLES = {
         label:      "Modern Sedan",
         sub:        "Midsize · 4-door",
         glb:        "/static/models/sedan_modern.glb",
-        categories: [],          // no swappable parts cut yet
+        categories: SEDAN_CATEGORIES,
         rotationY:  0,           // headlights sit at +Z — already faces camera
     },
     mazda6_gj: {
@@ -1784,6 +1790,10 @@ function buildPartSelectorUI() {
             setVariantVisible(available[0].name, true);
         }
 
+        // Whatever this body ships with — shown as "Included" and not billed.
+        // Must match the rule in updateBuildSummary().
+        const stockName = cat.default || (cat.variants[0] && cat.variants[0].name);
+
         // Parts sourced from real retailers may not fit every vehicle —
         // the builder is for visualising looks and gauging cost.
         const needsFitmentNote = /Wheels|Brakes|Tires|Spoiler/i.test(cat.key);
@@ -1805,7 +1815,15 @@ function buildPartSelectorUI() {
                             data-variant="${v.name}"
                             onclick="swapPart('${cat.key}', '${v.name}')">
                             <span class="pv-label">${v.label}</span>
-                            <span class="pv-price">${v.price > 0 ? "+$" + v.price.toLocaleString() : "Included"}</span>
+                            <span class="pv-price">${
+                                // The part the car ships with reads "Included"
+                                // even though it has a price — that price is
+                                // what it costs on a car that doesn't have it,
+                                // and the link stays so you can still buy one.
+                                v.name === stockName
+                                    ? "Included"
+                                    : (v.price > 0 ? "+$" + v.price.toLocaleString() : "Included")
+                            }</span>
                             ${v.url ? `<span class="pv-link" title="View product"
                                  onclick="event.stopPropagation();window.open('${v.url}','_blank','noopener')">
                                  <i data-lucide="external-link"></i></span>` : ""}
