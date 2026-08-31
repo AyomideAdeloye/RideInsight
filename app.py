@@ -88,6 +88,11 @@ BADGES = {
     "identified":    {"name": "Identified",     "icon": "🪪", "color": "#475569", "desc": "Added a profile picture and bio"},
     "connected":     {"name": "Connected",      "icon": "🔗", "color": "#2563eb", "desc": "Linked a social account"},
 
+    # ── Spotting ──
+    "spotter":       {"name": "Spotter",        "icon": "📷", "color": "#0ea5e9", "desc": "Had your first photo approved"},
+    "field_scout":   {"name": "Field Scout",    "icon": "🔭", "color": "#0369a1", "desc": "10 approved photos"},
+    "trailblazer":   {"name": "Trailblazer",    "icon": "🚩", "color": "#e11d48", "desc": "First to photograph 5 different models"},
+
     # ── Meta ──
     "completionist": {"name": "Completionist",  "icon": "💯", "color": "#dc2626", "desc": "Earned 15 other badges"},
 }
@@ -241,6 +246,27 @@ def check_and_award_badges(conn, user_id):
         (user_id,)).fetchone())
     if socials and any((v or "").strip() for v in tuple(socials)):
         award("connected")
+
+    # Approved community photos
+    shots = safe(lambda: conn.execute(
+        "SELECT COUNT(*) FROM vehicle_photos WHERE user_id=? AND status='approved'",
+        (user_id,)).fetchone()[0])
+    if shots:
+        if shots >= 1:  award("spotter")
+        if shots >= 10: award("field_scout")
+
+    # Models this user photographed before anyone else. A model counts as
+    # "claimed" by whoever has the lowest approved photo id for that key.
+    firsts = safe(lambda: conn.execute("""
+        SELECT COUNT(*) FROM (
+            SELECT vehicle_key, MIN(id) AS first_id
+            FROM vehicle_photos WHERE status='approved'
+            GROUP BY vehicle_key
+        ) f
+        JOIN vehicle_photos p ON p.id = f.first_id
+        WHERE p.user_id = ?
+    """, (user_id,)).fetchone()[0])
+    if firsts and firsts >= 5: award("trailblazer")
 
     # Meta badge — counted last so it sees everything awarded above
     if len(earned - {"completionist"}) >= 15: award("completionist")
@@ -1944,8 +1970,24 @@ def get_vehicle_photos():
         WHERE vehicle_key=? AND status='approved'
         ORDER BY id DESC LIMIT 30
     """, (key,)).fetchall()
+
+    # Whoever got an approved photo of this model in first, ever. Ordered by id
+    # rather than approval time so the credit follows who submitted first, not
+    # who happened to be reviewed first.
+    first = conn.execute("""
+        SELECT id FROM vehicle_photos
+        WHERE vehicle_key=? AND status='approved'
+        ORDER BY id ASC LIMIT 1
+    """, (key,)).fetchone()
+    first_id = first["id"] if first else None
+
     conn.close()
-    return jsonify([dict(r) for r in rows])
+    out = []
+    for r in rows:
+        d = dict(r)
+        d["is_first"] = (d["id"] == first_id)
+        out.append(d)
+    return jsonify(out)
 
 @csrf.exempt
 @app.route("/api/vehicle_photos/submit", methods=["POST"])
@@ -2029,12 +2071,28 @@ def review_vehicle_photo(photo_id, action):
 
     if photo["user_id"]:
         if status == "approved":
-            add_notification(conn, photo["user_id"],
-                f"📸 Your photo of the {photo['make']} {photo['model']} is now live",
-                link=f"/compare?type={photo['vehicle_type']}")
+            # Did this claim the model? Check after the update above.
+            first = conn.execute("""
+                SELECT id, user_id FROM vehicle_photos
+                WHERE vehicle_key=? AND status='approved'
+                ORDER BY id ASC LIMIT 1
+            """, (photo["vehicle_key"],)).fetchone()
+            claimed = bool(first and first["id"] == photo_id)
+            msg = (f"🚩 First ever photo of the {photo['make']} {photo['model']} — that one's yours"
+                   if claimed else
+                   f"📸 Your photo of the {photo['make']} {photo['model']} is now live")
+            add_notification(conn, photo["user_id"], msg,
+                             link=f"/compare?type={photo['vehicle_type']}")
         else:
             add_notification(conn, photo["user_id"],
                 f"Your photo of the {photo['make']} {photo['model']} wasn't approved")
+
+        # Approving a photo can earn Spotter, Field Scout or Trailblazer.
+        try:
+            check_and_award_badges(conn, photo["user_id"])
+        except Exception:
+            pass
+
     conn.commit(); conn.close()
     return jsonify({"message": status})
 

@@ -537,14 +537,20 @@ async function showWildTab(i) {
     } catch (e) {}
 
     if (!photos.length) {
+        // The empty state is the hook: nobody has claimed this model yet.
         gallery.innerHTML = `<p class="wild-empty">
-            No photos yet for the ${esc(v.make)} ${esc(v.model)}. Be the first to add one.
+            <i data-lucide="flag"></i>
+            No one has photographed a ${esc(v.make)} ${esc(v.model)} yet.
+            Add the first and it's credited to you permanently.
         </p>`;
+        if (window.refreshIcons) window.refreshIcons();
         return;
     }
 
     gallery.innerHTML = photos.map(p => `
-        <figure class="wild-shot">
+        <figure class="wild-shot${p.is_first ? " wild-first" : ""}">
+            ${p.is_first ? `<span class="wild-first-tag" title="First ever photo of this model">
+                <i data-lucide="flag"></i> First spotted</span>` : ""}
             <img src="${p.image}" alt="${esc(v.make)} ${esc(v.model)}" loading="lazy"
                  onclick="openWildLightbox('${p.image}')">
             <figcaption>
