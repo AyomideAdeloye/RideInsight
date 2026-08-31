@@ -168,6 +168,35 @@
     section { padding: 54px 0; }
     .form button { width: 100%; }
   }
+
+  .followup {
+    margin: 18px auto 0; max-width: 520px; text-align: left;
+    border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px;
+    background: var(--surface);
+  }
+  .followup-title { font-size: 13px; font-weight: 700; margin-bottom: 12px; color: var(--text); }
+  .followup-row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .followup-row input {
+    flex: 1 1 200px; padding: 10px 12px; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--bg); color: var(--text);
+    font-size: 14px; outline: none;
+  }
+  .followup-row input:focus { border-color: var(--accent); }
+  .followup-chips { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  .followup-chips button {
+    padding: 7px 12px; border-radius: 999px; cursor: pointer;
+    border: 1px solid var(--border); background: var(--surface);
+    color: var(--muted); font-size: 12.5px; font-weight: 600;
+  }
+  .followup-chips button:hover { border-color: var(--accent); color: var(--text); }
+  .followup-chips button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .followup-actions { display: flex; align-items: center; gap: 12px; margin-top: 14px; }
+  .followup-actions button:first-child {
+    padding: 9px 20px; border-radius: 8px; border: 0; cursor: pointer;
+    background: var(--accent); color: #fff; font-weight: 700; font-size: 13.5px;
+  }
+  .link-btn { background: none; border: 0; color: var(--muted); cursor: pointer; font-size: 13px; }
+  .link-btn:hover { color: var(--text); }
 </style>
 </head>
 <body>
@@ -197,6 +226,26 @@
     </form>
     <p class="form-note">No spam. One email when it launches.</p>
     <p class="form-msg" id="formMsg"></p>
+
+    <!-- Asked only after the email is safely saved, so a skipped answer
+         never costs a signup. -->
+    <div class="followup" id="followup" hidden>
+      <p class="followup-title">Two quick things — both optional</p>
+      <div class="followup-row">
+        <input type="text" id="locInput"  placeholder="City or school (e.g. Atlanta, GA)" autocomplete="address-level2">
+        <input type="text" id="carInput"  placeholder="What do you drive?" autocomplete="off">
+      </div>
+      <div class="followup-chips" id="interestChips">
+        <button type="button" data-interest="buying">Figuring out what to buy</button>
+        <button type="button" data-interest="building">Building / modding</button>
+        <button type="button" data-interest="meets">Meets &amp; community</button>
+      </div>
+      <div class="followup-actions">
+        <button type="button" id="followupSend">Send</button>
+        <button type="button" id="followupSkip" class="link-btn">Skip</button>
+      </div>
+      <p class="form-msg" id="followupMsg"></p>
+    </div>
 
     <div class="shot">
       <img src="/static/landing/builder.png" alt="RideInsight 3D builder"
@@ -304,6 +353,55 @@
 <script>
 document.getElementById('yr').textContent = new Date().getFullYear();
 
+// ── Optional follow-up ─────────────────────────────────────────────────
+// Shown only once the email is saved. Location is the one that matters: it
+// decides which city has enough people to launch into first.
+let waitlistToken = '';
+let chosenInterest = '';
+
+function showFollowup(token) {
+  waitlistToken = token;
+  const box = document.getElementById('followup');
+  if (box) box.hidden = false;
+}
+
+document.addEventListener('click', (e) => {
+  const chip = e.target.closest('#interestChips button');
+  if (!chip) return;
+  const already = chip.classList.contains('on');
+  document.querySelectorAll('#interestChips button').forEach(b => b.classList.remove('on'));
+  if (!already) { chip.classList.add('on'); chosenInterest = chip.dataset.interest; }
+  else chosenInterest = '';
+});
+
+document.addEventListener('DOMContentLoaded', () => {
+  const send = document.getElementById('followupSend');
+  const skip = document.getElementById('followupSkip');
+  const box  = document.getElementById('followup');
+  const msg  = document.getElementById('followupMsg');
+  if (skip) skip.addEventListener('click', () => { if (box) box.hidden = true; });
+  if (send) send.addEventListener('click', async () => {
+    send.disabled = true;
+    try {
+      await fetch('/api/waitlist/details', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token:    waitlistToken,
+          location: (document.getElementById('locInput')?.value || '').trim(),
+          vehicle:  (document.getElementById('carInput')?.value || '').trim(),
+          interest: chosenInterest
+        })
+      });
+      if (msg) { msg.textContent = 'Thanks — that helps.'; msg.className = 'form-msg ok'; }
+      setTimeout(() => { if (box) box.hidden = true; }, 1400);
+    } catch (err) {
+      if (msg) { msg.textContent = "Couldn't save that, but you're still on the list."; msg.className = 'form-msg err'; }
+    }
+    send.disabled = false;
+  });
+});
+
 function wireForm(formId, inputId, btnId, msgId) {
   const form = document.getElementById(formId);
   if (!form) return;
@@ -323,16 +421,20 @@ function wireForm(formId, inputId, btnId, msgId) {
     btn.disabled = true; btn.textContent = 'Joining…'; msg.textContent = '';
 
     try {
+      // ?src= lets a flyer, a campus QR code and an Instagram link be told
+      // apart later — e.g. /welcome?src=campus-gsu
+      const src = new URLSearchParams(location.search).get('src') || 'landing';
       const res  = await fetch('/api/waitlist', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email })
+        body: JSON.stringify({ email, source: src })
       });
       const data = await res.json();
       if (res.ok) {
         msg.textContent = data.message || "You're on the list.";
         msg.className = 'form-msg ok';
         input.value = ''; btn.textContent = 'Joined ✓';
+        if (data.token) showFollowup(data.token);
       } else {
         msg.textContent = data.error || 'Something went wrong. Try again.';
         msg.className = 'form-msg err';

@@ -820,6 +820,16 @@ def init_db():
             created_at TEXT DEFAULT ''
         )
     """)
+    # Optional follow-up answers, collected after the email is saved.
+    # location decides which city has enough density to launch first.
+    for col, ddl in [("location", "TEXT DEFAULT ''"),
+                     ("vehicle",  "TEXT DEFAULT ''"),
+                     ("interest", "TEXT DEFAULT ''"),
+                     ("token",    "TEXT DEFAULT ''")]:
+        try:
+            conn.execute(f"ALTER TABLE waitlist ADD COLUMN {col} {ddl}")
+        except Exception:
+            pass
 
     # "See it in the wild" — owner photos attached to a vehicle, held for
     # review before they appear. vehicle_key is a normalised make+model so a
@@ -2112,19 +2122,62 @@ def api_waitlist():
     if not _re.match(r"^[^@\s]+@[^@\s]+\.[a-z]{2,}$", email, _re.I):
         return jsonify({"error": "Enter a valid email address."}), 400
 
+    # Where the signup came from, so campus pushes can be told apart from
+    # social traffic without reading timestamps.
+    source = sanitize(data.get("source", "")).strip()[:40] or "landing"
+
     conn = get_db_connection()
+    # A short token returned to the browser so the follow-up questions can only
+    # update this row. Without it, anyone could POST an email and overwrite
+    # someone else's answers.
+    token = uuid.uuid4().hex[:16]
     try:
         conn.execute(
-            "INSERT INTO waitlist (email, source, created_at) VALUES (?,?,?)",
-            (email, "landing", datetime.utcnow().strftime("%Y-%m-%d %H:%M"))
+            "INSERT INTO waitlist (email, source, token, created_at) VALUES (?,?,?,?)",
+            (email, source, token, datetime.utcnow().strftime("%Y-%m-%d %H:%M"))
         )
         conn.commit()
         msg = "You're on the list. We'll be in touch."
     except sqlite3.IntegrityError:
+        # Already signed up — hand back the existing token so they can still
+        # answer the optional questions rather than hitting a dead end.
+        row = conn.execute("SELECT token FROM waitlist WHERE email=?", (email,)).fetchone()
+        token = row["token"] if row and row["token"] else ""
         msg = "You're already on the list."
     finally:
         conn.close()
-    return jsonify({"message": msg})
+    return jsonify({"message": msg, "token": token})
+
+
+@csrf.exempt
+@app.route("/api/waitlist/details", methods=["POST"])
+@limiter.limit("20 per hour")
+def api_waitlist_details():
+    """Optional follow-up questions, asked after the email is already saved.
+
+    Kept separate from the signup itself: every extra field on the button
+    costs conversions, so the email lands first and these are a bonus.
+    Location is the one that matters — it decides which city launches first.
+    """
+    data  = request.json or {}
+    token = sanitize(data.get("token", "")).strip()[:32]
+    if not token:
+        return jsonify({"error": "Missing token"}), 400
+
+    location = sanitize(data.get("location", "")).strip()[:120]
+    vehicle  = sanitize(data.get("vehicle", "")).strip()[:120]
+    interest = sanitize(data.get("interest", "")).strip()[:40]
+
+    conn = get_db_connection()
+    cur = conn.execute("""
+        UPDATE waitlist SET location=?, vehicle=?, interest=? WHERE token=?
+    """, (location, vehicle, interest, token))
+    conn.commit()
+    updated = cur.rowcount
+    conn.close()
+    if not updated:
+        return jsonify({"error": "Unknown signup"}), 404
+    return jsonify({"message": "Thanks — that helps."})
 
 @app.route("/api/waitlist/count")
 def api_waitlist_count():
