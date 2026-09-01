@@ -521,8 +521,20 @@ let currentTintHex = "#0d1218";
 
 // ── Accent parts (spoilers, wings, splitters, diffusers) ───────────────────
 // These are rarely body-matched in real life, so they get their own colour.
+// Parts that follow the accent colour rather than the body paint. These are
+// the bolt-ons people deliberately contrast: spoilers, lips, splitters,
+// diffusers, skirts.
+//
+// "Lip_" previously required a trailing underscore, so a mesh called
+// "Front_Lip" or a material called "Lip" fell through and took body paint.
+// Matching the word anywhere makes the behaviour deliberate instead of
+// depending on how the part happened to be named.
 function isAccentPart(name) {
-    return /Spoiler|Wing|Diffuser|Splitter|Lip_|Canard/i.test(name || "");
+    const n = name || "";
+    // "Lip" needs care: a bare substring match also catches Clip and Flip.
+    // Accept it at the start, after a separator, or as a camelCase suffix.
+    const isLip = /(^|[^A-Za-z])Lip/i.test(n) || /(Front|Rear|Side|Chin)Lip/i.test(n);
+    return isLip || /Spoiler|Wing|Diffuser|Splitter|Canard|Skirt/i.test(n);
 }
 
 const ACCENT_FINISHES = [
