@@ -941,6 +941,26 @@ function styleForPart(name) {
 
     // Blackout window surround / body moulding — checked before chrome so
     // "Trim" never falls through to the polished-metal rule.
+    // Carbon fibre — hood inserts, roof panels, lips, diffusers. Without this
+    // rule the name falls through to applyPaint() and takes body colour, which
+    // is the single most common "why is my part the wrong colour" cause.
+    if (/Carbon|CarbonFib(re|er)|(^|_)CF($|_)|Weave/i.test(name))
+        return { color: 0x14171b, roughness: 0.28, metalness: 0.55, env: 0.85 };
+
+    // Gloss black — decals, piano-black inserts, blacked-out panels. Sits
+    // before the vent rule so "HoodDecal" doesn't get the satin treatment.
+    // Near-zero roughness with full env reflection is what reads as glossy.
+    if (/Decal|Gloss.?Bl(ac)?k|Bl(ac)?k.?Gloss|Piano|Shadowline/i.test(name))
+        return { color: 0x0a0c0f, roughness: 0.06, metalness: 0.5, env: 1.0 };
+
+    // Vents, ducts and louvres are matte/satin rather than glossy.
+    if (/Vent|Duct|Louver|Louvre|Intake(?!.*Air)/i.test(name))
+        return { color: 0x101317, roughness: 0.6, metalness: 0.3, env: 0.35 };
+
+    // A diffuser is usually its own finish rather than painted with the car.
+    if (/Diffuser|Splitter|Canard/i.test(name))
+        return { color: 0x16191d, roughness: 0.4, metalness: 0.35, env: 0.5 };
+
     if (/Trim|Moulding|Molding|Blackout|Beltline/i.test(name))
         return { color: 0x15181c, roughness: 0.55, metalness: 0.25, env: 0.4 };
 
