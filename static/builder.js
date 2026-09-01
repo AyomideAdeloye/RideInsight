@@ -87,6 +87,52 @@ const brakeCategory = (stock) => ({
         : BRAKE_VARIANTS,
 });
 
+// ── Shared tyre catalogue ──────────────────────────────────────────────────
+// Split from wheels because they're a separate purchase on a separate
+// replacement cycle — you keep the rims and change the rubber every few years.
+// Mesh names: Tire_A_FL / Tire_A_FR / Tire_A_BL / Tire_A_BR, then B, C…
+// A car exporting plain Tire_FL (no letter) still works: it won't match a
+// variant, so it falls through to base geometry and stays permanently mounted.
+const TIRE_VARIANTS = [
+    { name: "Tire_A", label: "Stock",       price: 0 },
+    // TODO: prices + retailer links once sourced
+    { name: "Tire_B", label: "Performance", price: 0, effect: "tires" },
+    { name: "Tire_C", label: "Track",       price: 0, effect: "tires" },
+];
+
+const tireCategory = (stock) => ({
+    key:      "Tires",
+    label:    "Tires",
+    icon:     "circle",
+    default:  "Tire_A",
+    variants: stock
+        ? TIRE_VARIANTS.map(v => v.name === "Tire_A" ? { ...v, ...stock } : v)
+        : TIRE_VARIANTS,
+});
+
+// ── Shared exhaust catalogue ───────────────────────────────────────────────
+// Mesh names: Exhaust_A, Exhaust_B, Exhaust_C. For dual-exit systems modelled
+// as two objects, Exhaust_B_L and Exhaust_B_R both map to Exhaust_B.
+//
+// `hp` here is what makes a visual part a performance part too — an exhaust
+// genuinely adds power, so it counts toward the build's output instead of
+// being duplicated as a separate non-visual mod.
+const EXHAUST_VARIANTS = [
+    { name: "Exhaust_A", label: "Stock",       price: 0 },
+    { name: "Exhaust_B", label: "Dual Exit",   price: 450, hp: 12, effect: "exhaust" },
+    { name: "Exhaust_C", label: "Quad Tips",   price: 900, hp: 18, effect: "exhaust" },
+];
+
+const exhaustCategory = (stock) => ({
+    key:      "Exhaust",
+    label:    "Exhaust",
+    icon:     "flame",
+    default:  "Exhaust_A",
+    variants: stock
+        ? EXHAUST_VARIANTS.map(v => v.name === "Exhaust_A" ? { ...v, ...stock } : v)
+        : EXHAUST_VARIANTS,
+});
+
 const MUSCLECAR_CATEGORIES = [
     {
         key:      "Hood",
@@ -119,16 +165,7 @@ const MUSCLECAR_CATEGORIES = [
         ]
     },
     spoilerCategory("Spoiler_A"),   // ships with the lip spoiler
-    {
-        key:      "Exhaust",
-        label:    "Exhaust",
-        icon:     "flame",
-        variants: [
-            { name: "Exhaust_A", label: "Single Exit", price: 0 },
-            { name: "Exhaust_B", label: "Dual Exit",   price: 450 },
-            { name: "Exhaust_C", label: "Quad Tips",   price: 900 },
-        ]
-    },
+    exhaustCategory({ label: "Single Exit" }),
     {
         key:      "Fender",
         label:    "Fenders",
@@ -151,6 +188,7 @@ const MUSCLECAR_CATEGORIES = [
     },
     // Wheel_A here is the pack's own SM_Wheel set, mapped via `aliases`.
     wheelCategory(),
+    tireCategory(),
     brakeCategory(),
 ];
 
@@ -210,6 +248,7 @@ const MAZDA6_GJ_CATEGORIES = [
     },
     // The Mazda's stock 19" is a known listing, so it overrides Wheel_A.
     wheelCategory({ label: 'Stock 19"', url: "https://www.walmart.com/ip/1320398289" }),
+    tireCategory(),
     // Brake_A on this car IS the Brembo kit — the modelled calipers and rotors
     // were rebuilt as the GT slotted set, so the stock slot is the real
     // product. Export Brake_B_FL/FR/BL/BR to add a second option.
@@ -222,7 +261,9 @@ const MAZDA6_GJ_CATEGORIES = [
 // appear automatically as parts get exported.
 const SEDAN_CATEGORIES = [
     wheelCategory(),
+    tireCategory(),
     brakeCategory(),
+    exhaustCategory(),
     spoilerCategory("Spoiler_None"),
 ];
 
@@ -353,7 +394,8 @@ function rebuildPartIndex() {
     PART_CATEGORIES = VEHICLES[currentVehicleKey].categories;
     VARIANT_INFO = {};
     PART_CATEGORIES.forEach(c => c.variants.forEach(v => {
-        VARIANT_INFO[v.name] = { label: v.label, price: v.price, category: c.label };
+        VARIANT_INFO[v.name] = { label: v.label, price: v.price, category: c.label,
+                                 hp: v.hp || 0, effect: v.effect || "" };
     }));
     ALL_PART_MESHES = PART_CATEGORIES.flatMap(c => c.variants.map(v => v.name));
     Object.keys(selected).forEach(k => delete selected[k]);
@@ -908,9 +950,16 @@ function styleForPart(name) {
 }
 
 // ── Performance mods (stat-based, no visual mesh swap) ─────────────────────
+// Performance mods are the parts that aren't modelled — you buy them, they
+// change the numbers, but nothing on the car looks different. Anything that
+// IS modelled belongs in a visual category instead, where it can carry a
+// performance effect of its own (see `hp` on a variant). Wheels and tires used
+// to live here as well as there, so the same purchase existed twice.
 const PERF_MODS = {
     engine: [
-        { name: "Cold Air Intake",       cost: 250,  hp: 8,   icon: "wind" },
+        { name: "Cold Air Intake",       cost: 70,   hp: 8,   icon: "wind",
+          url: "https://www.spectreperformance.com/8219-universal-intake-tube-kit",
+          note: "Tube kit only — filter sold separately" },
         { name: "Performance Exhaust",   cost: 800,  hp: 18,  icon: "flame" },
         { name: "Turbocharger Kit",      cost: 3500, hp: 120, icon: "loader" },
         { name: "Supercharger Kit",      cost: 4500, hp: 150, icon: "zap" },
@@ -923,12 +972,8 @@ const PERF_MODS = {
         { name: "Sway Bar Kit",          cost: 400,  icon: "minus" },
         { name: "Air Suspension",        cost: 3000, icon: "cloud" },
         { name: "Adjustable Camber Kit", cost: 250,  icon: "ruler" },
-    ],
-    wheels: [
-        { name: "18\" Aftermarket Rims", cost: 1200, icon: "circle" },
-        { name: "19\" Forged Wheels",    cost: 2500, icon: "circle" },
-        { name: "Performance Tires",     cost: 800,  icon: "circle" },
-        { name: "Track Tires",           cost: 1200, icon: "circle" },
+        // Spacers change stance and track width but aren't modelled, so this
+        // is the right home for them now the wheels group is gone.
         { name: "Wheel Spacers",         cost: 150,  icon: "move-horizontal" },
     ],
 };
@@ -1853,6 +1898,7 @@ function buildPartSelectorUI() {
                             data-variant="${v.name}"
                             onclick="swapPart('${cat.key}', '${v.name}')">
                             <span class="pv-label">${v.label}</span>
+                            ${v.hp ? `<span class="pv-hp">+${v.hp} hp</span>` : ""}
                             <span class="pv-price">${
                                 // The part the car ships with reads "Included"
                                 // even though it has a price — that price is
@@ -1891,10 +1937,11 @@ function buildPerfModsUI() {
     perfHeader.innerHTML = `<i data-lucide="zap"></i> Performance Upgrades`;
     container.appendChild(perfHeader);
 
+    // No wheels group: wheels and tires are modelled parts now, so they live
+    // in the visual categories where you can actually see what you're buying.
     const perfDefs = [
         { key: "engine",     label: "Engine & Power",      icon: "settings"  },
         { key: "suspension", label: "Suspension",           icon: "wrench"    },
-        { key: "wheels",     label: "Wheels & Tires",       icon: "disc"      },
     ];
 
     perfDefs.forEach(def => {
@@ -1915,9 +1962,13 @@ function buildPerfModsUI() {
                             <div>
                                 <div class="mod-name">${mod.name}</div>
                                 ${mod.hp ? `<div class="mod-sub">+${mod.hp} hp (est.)</div>` : ""}
+                                ${mod.note ? `<div class="mod-sub">${mod.note}</div>` : ""}
                             </div>
                         </div>
                         <div class="mod-right">
+                            ${mod.url ? `<span class="pv-link" title="View product"
+                                 onclick="event.stopPropagation();window.open('${mod.url}','_blank','noopener')">
+                                 <i data-lucide="external-link"></i></span>` : ""}
                             <span class="mod-cost">$${mod.cost.toLocaleString()}</span>
                             <button class="mod-add-btn" onclick="toggleMod('${def.key}','${mod.name}',${mod.cost})">Add</button>
                         </div>
@@ -2157,7 +2208,10 @@ async function saveBuild() {
     // Visual parts → parts list entries with real prices
     Object.entries(selected).forEach(([cat, variant]) => {
         const info = VARIANT_INFO[variant] || {};
-        parts.push({ category: `visual:${cat}`, name: variant, cost: info.price || 0, effect: info.label || "", icon: "" });
+        // effect carries the performance keyword when the part has one, so a
+        // modelled exhaust counts toward output instead of being bought twice.
+        parts.push({ category: `visual:${cat}`, name: variant, cost: info.price || 0,
+                     effect: info.effect || info.label || "", icon: "" });
     });
     // Record which body this build uses
     parts.push({ category: "vehicle", name: currentVehicleKey, cost: 0, effect: VEHICLES[currentVehicleKey].label, icon: "" });
