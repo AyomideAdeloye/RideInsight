@@ -87,29 +87,6 @@ const brakeCategory = (stock) => ({
         : BRAKE_VARIANTS,
 });
 
-// ── Shared tyre catalogue ──────────────────────────────────────────────────
-// Split from wheels because they're a separate purchase on a separate
-// replacement cycle — you keep the rims and change the rubber every few years.
-// Mesh names: Tire_A_FL / Tire_A_FR / Tire_A_BL / Tire_A_BR, then B, C…
-// A car exporting plain Tire_FL (no letter) still works: it won't match a
-// variant, so it falls through to base geometry and stays permanently mounted.
-const TIRE_VARIANTS = [
-    { name: "Tire_A", label: "Stock",       price: 0 },
-    // TODO: prices + retailer links once sourced
-    { name: "Tire_B", label: "Performance", price: 0, effect: "tires" },
-    { name: "Tire_C", label: "Track",       price: 0, effect: "tires" },
-];
-
-const tireCategory = (stock) => ({
-    key:      "Tires",
-    label:    "Tires",
-    icon:     "circle",
-    default:  "Tire_A",
-    variants: stock
-        ? TIRE_VARIANTS.map(v => v.name === "Tire_A" ? { ...v, ...stock } : v)
-        : TIRE_VARIANTS,
-});
-
 // ── Shared exhaust catalogue ───────────────────────────────────────────────
 // Mesh names: Exhaust_A, Exhaust_B, Exhaust_C. For dual-exit systems modelled
 // as two objects, Exhaust_B_L and Exhaust_B_R both map to Exhaust_B.
@@ -188,7 +165,6 @@ const MUSCLECAR_CATEGORIES = [
     },
     // Wheel_A here is the pack's own SM_Wheel set, mapped via `aliases`.
     wheelCategory(),
-    tireCategory(),
     brakeCategory(),
 ];
 
@@ -248,7 +224,6 @@ const MAZDA6_GJ_CATEGORIES = [
     },
     // The Mazda's stock 19" is a known listing, so it overrides Wheel_A.
     wheelCategory({ label: 'Stock 19"', url: "https://www.walmart.com/ip/1320398289" }),
-    tireCategory(),
     // Brake_A on this car IS the Brembo kit — the modelled calipers and rotors
     // were rebuilt as the GT slotted set, so the stock slot is the real
     // product. Export Brake_B_FL/FR/BL/BR to add a second option.
@@ -261,11 +236,66 @@ const MAZDA6_GJ_CATEGORIES = [
 // appear automatically as parts get exported.
 const SEDAN_CATEGORIES = [
     wheelCategory(),
-    tireCategory(),
     brakeCategory(),
     exhaustCategory(),
     spoilerCategory("Spoiler_None"),
 ];
+
+// ── BMW M3 / M4 ────────────────────────────────────────────────────────────
+// Same platform, same parts bin, so they share one category list. Slots
+// self-manage, so each car only shows what its own GLB actually contains —
+// nothing breaks if one has a spoiler modelled and the other doesn't yet.
+const BMW_M_CATEGORIES = [
+    wheelCategory(),
+    brakeCategory(),
+    exhaustCategory(),
+    spoilerCategory("Spoiler_None"),
+    {
+        key:      "Hood",
+        label:    "Hood",
+        icon:     "chevrons-up",
+        variants: [
+            { name: "Hood_A", label: "Stock", price: 0 },
+            { name: "Hood_B", label: "Vented", price: 0 },
+        ]
+    },
+    {
+        key:      "FrontLip",
+        label:    "Front Lip",
+        icon:     "minus",
+        default:  "FrontLip_None",
+        variants: [
+            { name: "FrontLip_None", label: "None", price: 0, alwaysShow: true },
+            { name: "FrontLip_A", label: "Carbon Lip", price: 0 },
+        ]
+    },
+    {
+        key:      "FrontBumper",
+        label:    "Front Bumper",
+        icon:     "shield",
+        variants: [
+            { name: "FrontBumper_A", label: "Stock", price: 0 },
+            { name: "FrontBumper_B", label: "Sport", price: 0 },
+        ]
+    },
+    {
+        key:      "RearBumper",
+        label:    "Rear Bumper",
+        icon:     "shield",
+        variants: [
+            { name: "RearBumper_A", label: "Stock", price: 0 },
+            { name: "RearBumper_B", label: "Diffuser", price: 0 },
+        ]
+    },
+];
+
+// The M3 export names its single exhaust "Exhaust" and its lip "Front_Lip",
+// which don't fit the slot convention. Aliasing beats re-exporting: both
+// become swappable against None without touching the model.
+const BMW_M_ALIASES = {
+    "Exhaust_A":   /^Exhaust$/i,
+    "FrontLip_A":  /^Front_?Lip$/i,
+};
 
 const VEHICLES = {
     musclecar: {
@@ -296,7 +326,22 @@ const VEHICLES = {
         categories: MAZDA6_GJ_CATEGORIES,
         rotationY:  0,        // Tripo exports already face +Z; muscle car needs PI
     },
-    // sportscar:  { label: "Sports Car",  sub: "Modern coupe",  glb: "/static/models/sportscar.glb",  categories: [...] },
+    bmw_m3: {
+        label:      "BMW M3",
+        sub:        "G80 · Sedan",
+        glb:        "/static/models/bmw_m3.glb",
+        categories: BMW_M_CATEGORIES,
+        rotationY:  0,        // headlights measured at +Z — already faces camera
+        aliases:    BMW_M_ALIASES,
+    },
+    bmw_m4: {
+        label:      "BMW M4",
+        sub:        "G82 · Coupe",
+        glb:        "/static/models/bmw_m4.glb",
+        categories: BMW_M_CATEGORIES,
+        rotationY:  0,        // same bbox orientation as the M3
+        aliases:    BMW_M_ALIASES,
+    },
     // hypercar:   { label: "Hyper Car",   sub: "Exotic",        glb: "/static/models/hypercar.glb",   categories: [...] },
 };
 
