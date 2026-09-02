@@ -94,19 +94,28 @@ const brakeCategory = (stock) => ({
 // `hp` here is what makes a visual part a performance part too — an exhaust
 // genuinely adds power, so it counts toward the build's output instead of
 // being duplicated as a separate non-visual mod.
+// Exhaust_Stock is whatever system the car left the factory with. Cars that
+// name that mesh plain "Exhaust" map it here with an alias. A, B and C are the
+// aftermarket systems, shared across bodies — so a car can carry its own stock
+// pipe AND the three aftermarket options without them fighting for one slot.
 const EXHAUST_VARIANTS = [
-    { name: "Exhaust_A", label: "Stock",       price: 0 },
+    { name: "Exhaust_Stock", label: "Stock",     price: 0 },
+    // TODO: real prices + retailer links once sourced
+    { name: "Exhaust_A", label: "Single Exit", price: 0 },
     { name: "Exhaust_B", label: "Dual Exit",   price: 450, hp: 12, effect: "exhaust" },
     { name: "Exhaust_C", label: "Quad Tips",   price: 900, hp: 18, effect: "exhaust" },
 ];
 
-const exhaustCategory = (stock) => ({
+// `defaultName` is the slot this body ships wearing — it shows as "Included"
+// and isn't billed. The muscle car's own pipe IS Exhaust_A; everyone else uses
+// Exhaust_Stock.
+const exhaustCategory = (defaultName = "Exhaust_Stock", stock) => ({
     key:      "Exhaust",
     label:    "Exhaust",
     icon:     "flame",
-    default:  "Exhaust_A",
+    default:  defaultName,
     variants: stock
-        ? EXHAUST_VARIANTS.map(v => v.name === "Exhaust_A" ? { ...v, ...stock } : v)
+        ? EXHAUST_VARIANTS.map(v => v.name === defaultName ? { ...v, ...stock } : v)
         : EXHAUST_VARIANTS,
 });
 
@@ -142,7 +151,7 @@ const MUSCLECAR_CATEGORIES = [
         ]
     },
     spoilerCategory("Spoiler_A"),   // ships with the lip spoiler
-    exhaustCategory({ label: "Single Exit" }),
+    exhaustCategory("Exhaust_A"),
     {
         key:      "Fender",
         label:    "Fenders",
@@ -293,8 +302,8 @@ const BMW_M_CATEGORIES = [
 // which don't fit the slot convention. Aliasing beats re-exporting: both
 // become swappable against None without touching the model.
 const BMW_M_ALIASES = {
-    "Exhaust_A":   /^Exhaust$/i,
-    "FrontLip_A":  /^Front_?Lip$/i,
+    "Exhaust_Stock": /^Exhaust$/i,
+    "FrontLip_A":    /^Front_?Lip$/i,
 };
 
 const VEHICLES = {
@@ -318,6 +327,9 @@ const VEHICLES = {
         glb:        "/static/models/sedan_modern.glb",
         categories: SEDAN_CATEGORIES,
         rotationY:  0,           // headlights sit at +Z — already faces camera
+        // Factory pipe is exported as plain "Exhaust"; A/B/C are the
+        // aftermarket systems carried over from the muscle car.
+        aliases:    { "Exhaust_Stock": /^Exhaust$/i },
     },
     mazda6_gj: {
         label:      "Mazda 6",
