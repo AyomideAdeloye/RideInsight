@@ -6126,3 +6126,11 @@ html.dark-mode.scheme-blue   { --accent-light: #1e3a5f; }
     display: block; font-size: 10.5px; font-weight: 700;
     color: #16a34a; margin-top: 1px;
 }
+
+/* Rendered preview on a saved build card */
+.build-thumb {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    object-fit: cover; display: block;
+}
+.build-card-top { position: relative; overflow: hidden; }

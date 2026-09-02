@@ -285,7 +285,9 @@ async function loadBuilds() {
             card.className = "g-card build-card";
             card.innerHTML = `
                 <div class="build-card-top" style="background:linear-gradient(135deg, ${esc(b.car_color || "#1f4ed8")}cc, #0f172a);">
-                    <i data-lucide="car-front"></i>
+                    ${b.thumbnail
+                        ? `<img class="build-thumb" src="${b.thumbnail}" alt="${esc(b.name || "Build")}" loading="lazy">`
+                        : `<i data-lucide="car-front"></i>`}
                     <span class="build-color-chip" style="background:${esc(b.car_color || "#1f4ed8")};" title="Paint color"></span>
                 </div>
                 <div class="g-card-body">
@@ -303,7 +305,7 @@ async function loadBuilds() {
                     <div class="g-card-footer">
                         <span class="g-total-cost">$${grandTotal.toLocaleString()}</span>
                         <div class="g-card-actions">
-                            <button class="btn btn-ghost g-action-btn" onclick="window.location.href='/builder'">
+                            <button class="btn btn-ghost g-action-btn" onclick="window.location.href='/builder?build=${b.id}'">
                                 <i data-lucide="wrench"></i> Open
                             </button>
                             <button class="btn btn-ghost g-action-btn" onclick="shareBuildToFeed(${b.id})">

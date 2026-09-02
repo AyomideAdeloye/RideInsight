@@ -1085,6 +1085,12 @@ document.addEventListener("DOMContentLoaded", () => {
     initVehicleDropdowns();
     initColorWheel();
     loadSavedBuilds();
+
+    // Opened from the garage as /builder?build=12 — restore that build rather
+    // than dropping the user on the default body.
+    const wanted = new URLSearchParams(location.search).get("build");
+    if (wanted) loadBuild(parseInt(wanted, 10));
+
     if (window.refreshIcons) window.refreshIcons();
 });
 
@@ -1400,7 +1406,7 @@ function loadEnvironment() {
     );
 }
 
-function loadModel() {
+function loadModel(onReady) {
     const loader  = makeGLTFLoader();
     const overlay = document.getElementById("modelLoadOverlay");
     const status  = document.getElementById("modelLoadStatus");
@@ -1531,6 +1537,9 @@ function loadModel() {
 
             if (overlay) overlay.style.display = "none";
             if (window.refreshIcons) window.refreshIcons();
+            // Fired only now: partNodes is empty until the GLB has parsed, so
+            // anything that swaps parts has to wait for this.
+            if (typeof onReady === "function") onReady();
         },
         (progress) => {
             if (status && progress.total) {
@@ -1546,8 +1555,11 @@ function loadModel() {
 }
 
 // ── Vehicle switching ──────────────────────────────────────────────────────
-function switchVehicle(key) {
-    if (!VEHICLES[key] || key === currentVehicleKey) return;
+function switchVehicle(key, onReady) {
+    if (!VEHICLES[key] || key === currentVehicleKey) {
+        if (typeof onReady === "function") onReady();
+        return;
+    }
     currentVehicleKey = key;
 
     // Tear down current model
@@ -1563,7 +1575,7 @@ function switchVehicle(key) {
     rebuildPartIndex();
     rebuildCustomizationUI();
     updateBuildSummary();
-    loadModel();
+    loadModel(onReady);
 }
 
 function rebuildCustomizationUI() {
@@ -2284,6 +2296,28 @@ function updateBuildSummary() {
 }
 
 // ── Save / Load builds ─────────────────────────────────────────────────────
+// Grab what's on screen as the build's thumbnail. The renderer is created
+// without preserveDrawingBuffer, so the buffer is cleared after each frame —
+// we have to re-render and read it back in the same tick or we'd get a blank
+// image. Downscaled to 480px and JPEG-encoded to keep it a few tens of KB.
+function captureThumbnail() {
+    try {
+        if (!renderer || !scene || !camera) return "";
+        renderer.render(scene, camera);
+        const src = renderer.domElement;
+
+        const w = 480;
+        const h = Math.round(w * (src.height / src.width)) || 270;
+        const out = document.createElement("canvas");
+        out.width = w; out.height = h;
+        const ctx = out.getContext("2d");
+        ctx.drawImage(src, 0, 0, w, h);
+        return out.toDataURL("image/jpeg", 0.72);
+    } catch (e) {
+        return "";   // never let a thumbnail failure block saving the build
+    }
+}
+
 async function saveBuild() {
     const name = document.getElementById("buildName")?.value?.trim() || "My Build";
     const yr    = document.getElementById("baseYear")?.value  || "";
@@ -2329,6 +2363,7 @@ async function saveBuild() {
         basePrice:   basePriceCents,
         parts,
         carColor:    currentPaintHex,
+        thumbnail:   captureThumbnail(),
     };
 
     try {
@@ -2394,9 +2429,12 @@ async function loadBuild(id) {
         try { parts = JSON.parse(build.parts_json || "[]"); } catch(e) {}
 
         // Switch body first if the build uses a different vehicle
+        // Switching bodies reloads the GLB, which is async. Restoring parts
+        // before it finishes silently did nothing — partNodes was still empty,
+        // so every swapPart() call was a no-op and the car showed its defaults.
         const vehiclePart = parts.find(p => p.category === "vehicle");
         if (vehiclePart && VEHICLES[vehiclePart.name] && vehiclePart.name !== currentVehicleKey) {
-            switchVehicle(vehiclePart.name);
+            await new Promise(resolve => switchVehicle(vehiclePart.name, resolve));
         }
 
         // Reset perf mods first

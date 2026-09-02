@@ -527,6 +527,11 @@ def init_db():
             car_color TEXT DEFAULT '#1f4ed8'
         )
     """)
+    # Rendered preview of the build, captured in the 3D builder on save.
+    try:
+        conn.execute("ALTER TABLE builds ADD COLUMN thumbnail TEXT DEFAULT ''")
+    except Exception:
+        pass
 
     conn.execute("""
         CREATE TABLE IF NOT EXISTS notifications (
@@ -3029,15 +3034,24 @@ def save_build():
             "icon":     sanitize(p.get("icon", "")),
         })
     car_color  = sanitize(data.get("carColor", "#1f4ed8"))
+
+    # Thumbnail rendered by the builder as a data URL. NOT run through
+    # sanitize(): it's base64 image data, not markup, and escaping would
+    # corrupt it. Validated by shape and capped instead.
+    thumb = data.get("thumbnail", "") or ""
+    if not re.match(r"^data:image/(jpeg|png);base64,[A-Za-z0-9+/=]+$", thumb) \
+       or len(thumb) > 400_000:
+        thumb = ""
+
     conn = get_db_connection()
     conn.execute("""
-        INSERT INTO builds (user_id, name, base_year, base_make, base_model, base_trim, base_price, parts_json, car_color)
-        VALUES (?,?,?,?,?,?,?,?,?)
+        INSERT INTO builds (user_id, name, base_year, base_make, base_model, base_trim, base_price, parts_json, car_color, thumbnail)
+        VALUES (?,?,?,?,?,?,?,?,?,?)
     """, (
         session["user_id"], name,
         sanitize(base.get("year", "")), sanitize(base.get("make", "")),
         sanitize(base.get("model", "")), sanitize(base.get("trim", "")),
-        base_price, json.dumps(clean_parts), car_color
+        base_price, json.dumps(clean_parts), car_color, thumb
     ))
     conn.commit()
     conn.close()
