@@ -47,15 +47,15 @@ const spoilerCategory = (defaultName) => ({
 // overridden per car where the stock wheel is a known product.
 const WHEEL_VARIANTS = [
     { name: "Wheel_A", label: "Stock",         price: 0 },
-    { name: "Wheel_B", label: 'EV112 21"',     price: 4295,
+    { name: "Wheel_B", label: 'EV112 21"',     price: 4295, effect: "wheels19",
       url: "https://evsportline.com/products/ev112-21-porsche-taycan-wheel-set-of-4" },
-    { name: "Wheel_C", label: "SL-C13",        price: 5996,
+    { name: "Wheel_C", label: "SL-C13",        price: 5996, effect: "wheels19",
       url: "https://www.spluxwheels.com/products/sl-c13" },
-    { name: "Wheel_D", label: "Enkei TS-7",    price: 1152,
+    { name: "Wheel_D", label: "Enkei TS-7",    price: 1152, effect: "wheels18",
       url: "https://www.carid.com/enkei-wheels/ts-7-matte-bronze-6950365539.html" },
-    { name: "Wheel_E", label: "ENKEI Triumph", price: 1131,
+    { name: "Wheel_E", label: "ENKEI Triumph", price: 1131, effect: "wheels18",
       url: "https://www.fitmentindustries.com/buy-wheel-offset/543-885-6538ZP/enkei-triumph-18x85-38" },
-    { name: "Wheel_F", label: "ENKEI PF06",    price: 1609,
+    { name: "Wheel_F", label: "ENKEI PF06",    price: 1609, effect: "wheels18",
       url: "https://www.fitmentindustries.com/buy-wheel-offset/545-790-8035GG/enkei-pf06-17x9-35" },
 ];
 
@@ -73,7 +73,7 @@ const wheelCategory = (stock) => ({
 // ── Shared brake catalogue ─────────────────────────────────────────────────
 const BRAKE_VARIANTS = [
     { name: "Brake_A", label: "Stock", price: 0 },
-    { name: "Brake_B", label: "Brembo GT Slotted", price: 2295,
+    { name: "Brake_B", label: "Brembo GT Slotted", price: 2295, effect: "bigbrakes",
       url: "https://www.buybrakes.com/2016-mazda-6/big-brake-kits/bm-brembo-gt-systems-slotted-big-brake-kits" },
 ];
 
@@ -237,7 +237,7 @@ const MAZDA6_GJ_CATEGORIES = [
     // Brake_A on this car IS the Brembo kit — the modelled calipers and rotors
     // were rebuilt as the GT slotted set, so the stock slot is the real
     // product. Export Brake_B_FL/FR/BL/BR to add a second option.
-    brakeCategory({ label: "Brembo GT Slotted", price: 2295,
+    brakeCategory({ label: "Brembo GT Slotted", price: 2295, effect: "bigbrakes",
                     url: "https://www.buybrakes.com/2016-mazda-6/big-brake-kits/bm-brembo-gt-systems-slotted-big-brake-kits" }),
 ];
 
