@@ -350,7 +350,7 @@ const VEHICLES = {
     },
     bmw_m4: {
         label:      "BMW M4",
-        sub:        "G82 · Coupe",
+        sub:        "G82 · Competition",
         glb:        "/static/models/bmw_m4.glb",
         categories: BMW_M_CATEGORIES,
         rotationY:  0,        // same bbox orientation as the M3

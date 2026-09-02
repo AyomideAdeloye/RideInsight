@@ -34,8 +34,10 @@ const VEHICLE_BASE_STATS = {
         hp: 473, handling: 78, braking: 80, weight: 1.06,
     },
     bmw_m4: {
-        label: "BMW M4 G82",
-        hp: 473, handling: 80, braking: 80, weight: 1.05,
+        label: "BMW M4 Competition",
+        // Competition xDrive: 503 hp, and the extra grunt comes with a little
+        // more weight than the base G82.
+        hp: 503, handling: 82, braking: 82, weight: 1.07,
     },
 };
 
