@@ -31,13 +31,16 @@ const VEHICLE_BASE_STATS = {
     },
     bmw_m3: {
         label: "BMW M3 G80",
-        hp: 473, handling: 78, braking: 80, weight: 1.06,
+        // Base G80, rear-wheel drive and the lighter of the two. Gives up
+        // 30 hp to the Comp but carries less weight, so power-to-weight is
+        // near enough identical — the race comes down to how it's built.
+        hp: 473, handling: 78, braking: 80, weight: 1.03,
     },
     bmw_m4: {
         label: "BMW M4 Competition",
-        // Competition xDrive: 503 hp, and the extra grunt comes with a little
-        // more weight than the base G82.
-        hp: 503, handling: 82, braking: 82, weight: 1.07,
+        // Competition xDrive: 503 hp, but the all-wheel-drive hardware is
+        // roughly 50 kg of it. More power, more to haul.
+        hp: 503, handling: 82, braking: 82, weight: 1.10,
     },
 };
 
