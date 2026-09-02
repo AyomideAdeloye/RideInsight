@@ -171,21 +171,21 @@
 
   .followup {
     margin: 18px auto 0; max-width: 520px; text-align: left;
-    border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px;
-    background: var(--surface);
+    border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px;
+    background: rgba(255,255,255,0.03);
   }
   .followup-title { font-size: 13px; font-weight: 700; margin-bottom: 12px; color: var(--text); }
   .followup-row { display: flex; gap: 10px; flex-wrap: wrap; }
   .followup-row input {
     flex: 1 1 200px; padding: 10px 12px; border-radius: 8px;
-    border: 1px solid var(--border); background: var(--bg); color: var(--text);
+    border: 1px solid var(--line); background: var(--bg); color: var(--text);
     font-size: 14px; outline: none;
   }
   .followup-row input:focus { border-color: var(--accent); }
   .followup-chips { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
   .followup-chips button {
     padding: 7px 12px; border-radius: 999px; cursor: pointer;
-    border: 1px solid var(--border); background: var(--surface);
+    border: 1px solid var(--line); background: transparent;
     color: var(--muted); font-size: 12.5px; font-weight: 600;
   }
   .followup-chips button:hover { border-color: var(--accent); color: var(--text); }

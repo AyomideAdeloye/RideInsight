@@ -232,6 +232,7 @@ const MAZDA6_GJ_CATEGORIES = [
         ]
     },
     // The Mazda's stock 19" is a known listing, so it overrides Wheel_A.
+    exhaustCategory(),
     wheelCategory({ label: 'Stock 19"', url: "https://www.walmart.com/ip/1320398289" }),
     // Brake_A on this car IS the Brembo kit — the modelled calipers and rotors
     // were rebuilt as the GT slotted set, so the stock slot is the real
@@ -337,6 +338,7 @@ const VEHICLES = {
         glb:        "/static/models/mazda6_gj.glb",
         categories: MAZDA6_GJ_CATEGORIES,
         rotationY:  0,        // Tripo exports already face +Z; muscle car needs PI
+        aliases:    { "Exhaust_Stock": /^Exhaust$/i },
     },
     bmw_m3: {
         label:      "BMW M3",
