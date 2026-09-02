@@ -2439,6 +2439,17 @@ async function loadSavedBuilds() {
                 </div>
             </div>`;
         }).join("");
+
+        // Open it automatically when there's something in it. Collapsed at the
+        // bottom of a long panel, it read as "there is no load button".
+        const body   = document.getElementById("body-savedBuilds");
+        const toggle = document.getElementById("toggle-savedBuilds");
+        if (body && body.style.display === "none") {
+            body.style.display = "block";
+            if (toggle) toggle.style.transform = "rotate(0)";
+        }
+        const label = document.getElementById("savedBuildsCount");
+        if (label) label.textContent = `(${builds.length})`;
     } catch(e) {
         container.innerHTML = `<p class="empty-state" style="padding:8px 0;">No saved builds yet.</p>`;
     }

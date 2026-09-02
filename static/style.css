@@ -6134,3 +6134,8 @@ html.dark-mode.scheme-blue   { --accent-light: #1e3a5f; }
     object-fit: cover; display: block;
 }
 .build-card-top { position: relative; overflow: hidden; }
+
+.section-count {
+    font-style: normal; font-size: 12px; font-weight: 700;
+    color: var(--accent); margin-left: 4px;
+}
