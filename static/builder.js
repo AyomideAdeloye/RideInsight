@@ -913,6 +913,24 @@ function isWheelOrInterior(name) {
 function styleForPart(name) {
     if (!name) return null;
 
+    // ── Hand-authored materials: keep the colour set in Blender ────────────
+    // A preset with no `color` key leaves mat.color untouched (prepMaterials
+    // only assigns the keys it's given), and returning a preset at all stops
+    // applyPaint() from repainting the part. So this preserves the exported
+    // colour while still giving the surface sensible lens properties.
+    //
+    // Numbered lamp materials — Taillight1, Taillight2, Headlight2 — are the
+    // case this exists for: a real tail lamp is several colours (red lens,
+    // clear reverse, amber indicator) and forcing them all to one red throws
+    // away work that was done deliberately.
+    if (/^(Tail|Head|Brake|Fog|Turn|Signal|Marker)?light\s*_?\d+$/i.test(name))
+        return { roughness: 0.12, metalness: 0.15, env: 0.9 };
+
+    // Explicit opt-out for anything else you've coloured yourself: suffix the
+    // material with _Keep (or _Raw) and the styler leaves it completely alone.
+    if (/_(Keep|Raw)$/i.test(name))
+        return { roughness: 0.4, metalness: 0.2 };
+
     // Window glass only — "GlassHeadlight"/"GlassTaillight" must fall through
     // to the lamp rules below, not be treated as a window.
     if (/Glass|Window|Windshield|Windscreen/i.test(name)
