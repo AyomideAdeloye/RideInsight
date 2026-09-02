@@ -1406,10 +1406,21 @@ function loadEnvironment() {
     );
 }
 
+// Bumped on every load request. A GLB that finishes after a newer load has
+// started belongs to a body the user has already switched away from, so its
+// result is thrown away instead of being added to the scene. Without this,
+// opening a saved build while the default car was still downloading left both
+// models in the scene at once.
+let modelLoadToken = 0;
+
 function loadModel(onReady) {
     const loader  = makeGLTFLoader();
     const overlay = document.getElementById("modelLoadOverlay");
     const status  = document.getElementById("modelLoadStatus");
+    const myToken = ++modelLoadToken;
+
+    // Drop any car already in the scene before the new one arrives.
+    if (carModel && scene) { scene.remove(carModel); carModel = null; }
 
     if (overlay) overlay.style.display = "flex";
 
@@ -1418,6 +1429,8 @@ function loadModel(onReady) {
     loader.load(
         VEHICLES[currentVehicleKey].glb + "?v=" + Date.now(),
         (gltf) => {
+            // A newer load started while this one was in flight — discard it.
+            if (myToken !== modelLoadToken) return;
             carModel = gltf.scene;
 
             // Pattern-match every mesh into variant groups or base
@@ -1548,8 +1561,12 @@ function loadModel(onReady) {
             }
         },
         (err) => {
+            if (myToken !== modelLoadToken) return;
             console.error("GLB load failed:", err);
             if (status) status.textContent = "Failed to load model";
+            // Still signal completion, or an awaiting loadBuild() hangs forever
+            // on a missing or corrupt GLB.
+            if (typeof onReady === "function") onReady();
         }
     );
 }
