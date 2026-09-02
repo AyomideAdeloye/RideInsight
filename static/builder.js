@@ -234,11 +234,10 @@ const MAZDA6_GJ_CATEGORIES = [
     // The Mazda's stock 19" is a known listing, so it overrides Wheel_A.
     exhaustCategory(),
     wheelCategory({ label: 'Stock 19"', url: "https://www.walmart.com/ip/1320398289" }),
-    // Brake_A on this car IS the Brembo kit — the modelled calipers and rotors
-    // were rebuilt as the GT slotted set, so the stock slot is the real
-    // product. Export Brake_B_FL/FR/BL/BR to add a second option.
-    brakeCategory({ label: "Brembo GT Slotted", price: 2295, effect: "bigbrakes",
-                    url: "https://www.buybrakes.com/2016-mazda-6/big-brake-kits/bm-brembo-gt-systems-slotted-big-brake-kits" }),
+    // Stock brakes are stock; Brake_B is the Brembo kit, same as every other
+    // car. (An earlier export only had Brake_A, which was briefly treated as
+    // the Brembo — it isn't.)
+    brakeCategory(),
 ];
 
 // ── Modern Sedan ───────────────────────────────────────────────────────────
