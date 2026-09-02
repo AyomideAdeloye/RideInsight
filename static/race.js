@@ -69,13 +69,21 @@ const AI_BUILDS = {
 function calcStats(build) {
     if (!build) return { hp: 150, handling: 50, braking: 50, weight: 1.0, nitro: 1 };
 
-    let hp       = 180;   // base
-    let handling = 50;
-    let braking  = 50;
-    let weight   = 1.0;   // multiplier (lower = faster)
-    let nitro    = 1;
-
     const parts = build.parts || [];
+
+    // Start from the body's own numbers rather than a flat 180 for everything —
+    // otherwise an M3 and a Mazda 6 race identically once you strip the mods.
+    // The vehicle key is recorded in the build as a "vehicle" part.
+    const vehiclePart = parts.find(p => p.category === "vehicle");
+    const base = (typeof baseStatsFor === "function")
+        ? baseStatsFor(vehiclePart && vehiclePart.name)
+        : { hp: 180, handling: 50, braking: 50, weight: 1.0 };
+
+    let hp       = base.hp;
+    let handling = base.handling;
+    let braking  = base.braking;
+    let weight   = base.weight;   // multiplier (lower = faster)
+    let nitro    = 1;
 
     parts.forEach(p => {
         // Infer effect from part name if missing (for older saves)

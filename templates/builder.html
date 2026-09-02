@@ -151,5 +151,6 @@
 <!-- Draco: only needed for compressed GLBs. Uncompressed files load fine
      without it, so a CDN failure here degrades rather than breaks. -->
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/DRACOLoader.js"></script>
+<script src="{{ url_for('static', filename='vehicleBaseStats.js') }}"></script>
 <script src="{{ url_for('static', filename='builder.js') }}"></script>
 {% endblock %}
