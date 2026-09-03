@@ -301,9 +301,14 @@ const BMW_M_CATEGORIES = [
 // The M3 export names its single exhaust "Exhaust" and its lip "Front_Lip",
 // which don't fit the slot convention. Aliasing beats re-exporting: both
 // become swappable against None without touching the model.
+// The two M cars name these slightly differently between exports — Front_Lip
+// vs Front_Lip_A, FrontBumper_A vs Front_Bumper_A. Tolerating the underscore
+// and the optional _A beats re-exporting a finished model over a name.
 const BMW_M_ALIASES = {
-    "Exhaust_Stock": /^Exhaust$/i,
-    "FrontLip_A":    /^Front_?Lip$/i,
+    "Exhaust_Stock":   /^Exhaust$/i,
+    "FrontLip_A":      /^Front_?Lip(_A)?$/i,
+    "FrontBumper_A":   /^Front_?Bumper_A$/i,
+    "RearBumper_A":    /^Rear_?Bumper_A$/i,
 };
 
 const VEHICLES = {

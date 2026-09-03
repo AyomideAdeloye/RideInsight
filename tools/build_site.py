@@ -17,8 +17,10 @@ import shutil
 
 SRC   = os.path.join("templates", "landing.html")
 OUT   = "site"
-# Where the Flask app will live, for the footer's legal links.
-APP   = "https://app.rideinsight.com"
+# Where the app will live once it's hosted. Leave empty until it actually
+# exists — pointing at a domain you don't own sends people to whoever is
+# squatting it. While empty, "Sign in" links go to the waitlist instead.
+APP   = ""
 # Brand assets referenced by the landing page.
 ASSETS = ["favicon.ico", "icon-180.png", "icon-512.png",
           "logo-navy.svg", "logo-red.svg"]
@@ -200,7 +202,9 @@ s = s.replace('href="/static/', 'href="static/').replace('src="/static/', 'src="
 #    since there's nothing to sign in to on a static site.
 for route in ("/support", "/privacy", "/terms"):
     s = s.replace(f'href="{route}"', f'href="{route.lstrip("/")}.html"')
-s = s.replace('href="/login"', f'href="{APP}/login"')
+# No app yet -> "Sign in" should invite them to join the waitlist, not 404
+# or land on a domain-parking page.
+s = s.replace('href="/login"', f'href="{APP}/login"' if APP else 'href="#waitlist"')
 
 # 3. Config block the user fills in once
 s = s.replace(
