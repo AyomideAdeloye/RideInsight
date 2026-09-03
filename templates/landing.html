@@ -10,6 +10,12 @@
 <meta property="og:description" content="A 3D car configurator, comparison tool and community for enthusiasts.">
 <meta property="og:type" content="website">
 
+<link rel="icon" href="/static/brand/favicon.ico" sizes="any">
+<link rel="icon" type="image/svg+xml" href="/static/brand/logo-navy.svg">
+<link rel="apple-touch-icon" sizes="180x180" href="/static/brand/icon-180.png">
+<meta name="theme-color" content="#16202e">
+<meta property="og:image" content="/static/brand/icon-512.png">
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -46,7 +52,7 @@
     display: flex; align-items: center; justify-content: space-between;
     height: 64px;
   }
-  .logo { font-size: 21px; font-weight: 700; color: var(--accent); letter-spacing: -.4px; }
+  .logo { display:flex; align-items:center; gap:9px; font-size: 21px; font-weight: 700; color: var(--accent); letter-spacing: -.4px; }
   .nav-cta {
     font-size: 14px; font-weight: 600; color: #fff; text-decoration: none;
     background: var(--accent); padding: 9px 18px; border-radius: 8px;
@@ -171,21 +177,21 @@
 
   .followup {
     margin: 18px auto 0; max-width: 520px; text-align: left;
-    border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px;
-    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px;
+    background: var(--surface);
   }
   .followup-title { font-size: 13px; font-weight: 700; margin-bottom: 12px; color: var(--text); }
   .followup-row { display: flex; gap: 10px; flex-wrap: wrap; }
   .followup-row input {
     flex: 1 1 200px; padding: 10px 12px; border-radius: 8px;
-    border: 1px solid var(--line); background: var(--bg); color: var(--text);
+    border: 1px solid var(--border); background: var(--bg); color: var(--text);
     font-size: 14px; outline: none;
   }
   .followup-row input:focus { border-color: var(--accent); }
   .followup-chips { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
   .followup-chips button {
     padding: 7px 12px; border-radius: 999px; cursor: pointer;
-    border: 1px solid var(--line); background: transparent;
+    border: 1px solid var(--border); background: var(--surface);
     color: var(--muted); font-size: 12.5px; font-weight: 600;
   }
   .followup-chips button:hover { border-color: var(--accent); color: var(--text); }
@@ -204,7 +210,10 @@
 <div class="topbar">
   <div class="wrap">
     <nav>
-      <div class="logo">RideInsight</div>
+      <div class="logo">
+        <img src="/static/brand/logo-red.svg" alt="" width="30" height="30">
+        <span>RideInsight</span>
+      </div>
       <a class="nav-cta" href="#waitlist">Join waitlist</a>
     </nav>
   </div>

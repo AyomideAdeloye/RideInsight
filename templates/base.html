@@ -5,6 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RideInsight</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+
+    <!-- Brand. Favicon is the navy mark (sharper on light browser chrome);
+         installed app icons are the red one (findable on a home screen). -->
+    <link rel="icon" href="{{ url_for('static', filename='brand/favicon.ico') }}" sizes="any">
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='brand/logo-navy.svg') }}">
+    <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='brand/icon-180.png') }}">
+    <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+    <meta name="theme-color" content="#16202e">
+    <meta name="apple-mobile-web-app-title" content="RideInsight">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
 </head>
@@ -14,7 +23,11 @@
 
 <nav class="navbar">
     <div class="hamburger" onclick="toggleMenu()"><i data-lucide="menu"></i></div>
-    <h1 class="logo" onclick="window.location.href='/'">RideInsight</h1>
+    <h1 class="logo" onclick="window.location.href='/'">
+        <img src="{{ url_for('static', filename='brand/logo-red.svg') }}"
+             alt="" class="logo-mark" width="30" height="30">
+        <span>Ride<span class="logo-accent">Insight</span></span>
+    </h1>
     <input type="text" class="search-bar" placeholder="Search posts, cars, users…"
            id="globalSearch" onkeydown="handleGlobalSearch(event)">
 

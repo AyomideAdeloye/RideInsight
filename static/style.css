@@ -6139,3 +6139,12 @@ html.dark-mode.scheme-blue   { --accent-light: #1e3a5f; }
     font-style: normal; font-size: 12px; font-weight: 700;
     color: var(--accent); margin-left: 4px;
 }
+
+/* Brand lockup in the navbar */
+.logo { display: flex; align-items: center; gap: 10px; }
+.logo-mark { display: block; border-radius: 7px; flex-shrink: 0; }
+.logo-accent { color: var(--accent); }
+@media (max-width: 600px) {
+    .logo span { display: none; }   /* mark only on small screens */
+    .logo-mark { width: 28px; height: 28px; }
+}
