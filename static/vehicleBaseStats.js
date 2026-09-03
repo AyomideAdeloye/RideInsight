@@ -36,6 +36,14 @@ const VEHICLE_BASE_STATS = {
         // near enough identical — the race comes down to how it's built.
         hp: 473, handling: 78, braking: 80, weight: 1.03,
     },
+    porsche_911: {
+        label: "Porsche 911 GT3 RS",
+        // 992 GT3 RS: 518 hp from a naturally aspirated 4.0 flat-six, and
+        // ~275 kg lighter than an M4 Competition. Carbon buckets, a roll cage
+        // and enough downforce to matter — the best-handling and best-braking
+        // thing in the app by a distance, and the fastest on power-to-weight.
+        hp: 518, handling: 96, braking: 94, weight: 0.93,
+    },
     bmw_m4: {
         label: "BMW M4 Competition",
         // Competition xDrive: 503 hp, but the all-wheel-drive hardware is

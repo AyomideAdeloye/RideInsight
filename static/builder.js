@@ -352,6 +352,18 @@ const VEHICLES = {
         rotationY:  0,        // headlights measured at +Z — already faces camera
         aliases:    BMW_M_ALIASES,
     },
+    porsche_911: {
+        label:      "Porsche 911 GT3 RS",
+        sub:        "992 · Track",
+        glb:        "/static/models/porsche_911.glb",
+        // Shares the M-car slot list: same parts, and anything not present in
+        // this GLB hides itself.
+        categories: BMW_M_CATEGORIES,
+        aliases:    BMW_M_ALIASES,
+        // Assumed from the other Tripo exports, which all face +Z. Once it's
+        // cut and has a named headlight mesh I can measure it properly.
+        rotationY:  0,
+    },
     bmw_m4: {
         label:      "BMW M4",
         sub:        "G82 · Competition",
