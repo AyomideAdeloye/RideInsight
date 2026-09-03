@@ -19,9 +19,13 @@ SRC   = os.path.join("templates", "landing.html")
 OUT   = "site"
 # Where the Flask app will live, for the footer's legal links.
 APP   = "https://app.rideinsight.com"
-# Only these assets are referenced by the landing page.
+# Brand assets referenced by the landing page.
 ASSETS = ["favicon.ico", "icon-180.png", "icon-512.png",
           "logo-navy.svg", "logo-red.svg"]
+
+# Hero screenshot. Optional — the page falls back to a placeholder box if it's
+# missing, so the build never breaks over it.
+HERO = os.path.join("static", "landing", "builder.png")
 
 # The Web3Forms access key is read from web3forms_key.txt (or the WEB3FORMS_KEY
 # environment variable) rather than pasted into the generated HTML — otherwise
@@ -164,12 +168,23 @@ for f in ASSETS:
         shutil.copy2(src_p, os.path.join(OUT, "static", "brand", f))
         copied += 1
 
+os.makedirs(os.path.join(OUT, "static", "landing"), exist_ok=True)
+hero_size = None
+if os.path.exists(HERO):
+    shutil.copy2(HERO, os.path.join(OUT, "static", "landing", "builder.png"))
+    hero_size = os.path.getsize(HERO)
+
 leftover = re.findall(r'(?:src|href)="/(?!/)[^"]*"', s)
 size = os.path.getsize(os.path.join(OUT, "index.html"))
 
 print(f"site/index.html   {size:,} bytes")
 print(f"assets copied     {copied}/{len(ASSETS)}")
 print(f"absolute paths    {'none' if not leftover else leftover}")
+if hero_size:
+    print(f"hero screenshot   {hero_size/1000:,.0f} KB"
+          + ("   <- large, consider compressing" if hero_size > 500_000 else ""))
+else:
+    print(f"hero screenshot   MISSING — save one to {HERO}")
 if ACCESS_KEY.startswith("REPLACE_"):
     print(f"\n!  No access key yet. Put it in {KEY_FILE} and re-run this script.")
     print("   Get one free at https://web3forms.com")
