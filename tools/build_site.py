@@ -38,14 +38,169 @@ if not ACCESS_KEY and os.path.exists(KEY_FILE):
     ACCESS_KEY = open(KEY_FILE, encoding="utf-8").read().strip()
 ACCESS_KEY = ACCESS_KEY or "REPLACE_WITH_YOUR_WEB3FORMS_ACCESS_KEY"
 
+
+# ── Static legal pages ────────────────────────────────────────────────────
+# /support, /privacy and /terms are Flask routes. The static site has no Flask,
+# so the footer links would 404 on a live page. Rather than duplicating the
+# policy text, the copy is imported straight out of app.py — one source of
+# truth, and the pages can never drift apart.
+
+LEGAL_TEMPLATE = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{title} — RideInsight</title>
+<meta name="robots" content="index,follow">
+<link rel="icon" href="static/brand/favicon.ico" sizes="any">
+<link rel="icon" type="image/svg+xml" href="static/brand/logo-navy.svg">
+<meta name="theme-color" content="#16202e">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *,*::before,*::after{{box-sizing:border-box;margin:0;padding:0}}
+  :root{{--navy:#16202e;--bg:#f7f8fa;--surface:#fff;--border:#e2e6ec;
+         --text:#1a2230;--muted:#64748b;--accent:#e11d48}}
+  body{{font-family:'Inter',system-ui,-apple-system,sans-serif;background:var(--bg);
+        color:var(--text);line-height:1.65;-webkit-font-smoothing:antialiased}}
+  .topbar{{background:var(--navy)}}
+  nav{{max-width:820px;margin:0 auto;padding:0 24px;height:64px;
+       display:flex;align-items:center;gap:10px}}
+  nav a{{display:flex;align-items:center;gap:10px;text-decoration:none;
+         font-size:21px;font-weight:700;color:var(--accent);letter-spacing:-.4px}}
+  nav img{{border-radius:7px}}
+  main{{max-width:820px;margin:0 auto;padding:40px 24px 70px}}
+  h1{{font-size:clamp(26px,4vw,34px);font-weight:800;letter-spacing:-.8px;margin-bottom:6px}}
+  .updated{{font-size:13px;color:var(--muted);margin-bottom:26px}}
+  .body{{background:var(--surface);border:1px solid var(--border);border-radius:12px;
+         padding:28px 30px;box-shadow:0 1px 3px rgba(20,30,50,.07)}}
+  .body h3{{font-size:14px;font-weight:800;margin:26px 0 8px;text-transform:uppercase;
+            letter-spacing:.05em;color:var(--accent)}}
+  .body h3:first-child{{margin-top:0}}
+  .body p{{margin-bottom:13px;font-size:15px}}
+  .body ul{{margin:0 0 15px 20px}}
+  .body li{{margin-bottom:7px;font-size:15px}}
+  .body a{{color:var(--accent);font-weight:600;text-decoration:none}}
+  .body a:hover{{text-decoration:underline}}
+  footer{{max-width:820px;margin:0 auto;padding:22px 24px 50px;
+          display:flex;gap:18px;flex-wrap:wrap;font-size:13.5px}}
+  footer a{{color:var(--muted);text-decoration:none}}
+  footer a:hover{{color:var(--accent)}}
+  @media(max-width:640px){{.body{{padding:22px 20px}}}}
+</style>
+</head>
+<body>
+<div class="topbar"><nav>
+  <a href="index.html"><img src="static/brand/logo-red.svg" alt="" width="30" height="30">RideInsight</a>
+</nav></div>
+<main>
+  <h1>{title}</h1>
+  {updated_html}
+  <div class="body">{body}</div>
+</main>
+<footer>
+  <a href="index.html">&larr; Home</a>
+  <a href="support.html">Contact &amp; Support</a>
+  <a href="privacy.html">Privacy Policy</a>
+  <a href="terms.html">Terms &amp; Conditions</a>
+</footer>
+</body>
+</html>
+"""
+
+
+def build_legal_pages():
+    """Lift the policy copy out of app.py without importing it.
+
+    Parsing the source rather than importing means no Flask, no bleach, no
+    database side effects — and the text still has exactly one home, so these
+    pages can't drift from what the app serves.
+    """
+    import ast
+
+    src = open("app.py", encoding="utf-8").read()
+    tree = ast.parse(src)
+
+    # Module-level constants the policy f-strings interpolate
+    consts = {}
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and isinstance(node.value, ast.Constant):
+            for t in node.targets:
+                if isinstance(t, ast.Name):
+                    consts[t.id] = node.value.value
+
+    TRIPLE_D = chr(34) * 3
+    TRIPLE_S = chr(39) * 3
+
+    def unwrap(seg):
+        """Strip the f-prefix and quotes off a string literal's source."""
+        seg = seg.strip()
+        if seg[:1] == "f":
+            seg = seg[1:]
+        for q in (TRIPLE_D, TRIPLE_S, chr(34), chr(39)):
+            if seg.startswith(q) and seg.endswith(q):
+                return seg[len(q):-len(q)]
+        return seg
+
+    wanted = {"support": "support.html",
+              "privacy": "privacy.html",
+              "terms":   "terms.html"}
+    written = 0
+
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.FunctionDef) or node.name not in wanted:
+            continue
+
+        body_src, title, updated = None, node.name.title(), None
+
+        for stmt in ast.walk(node):
+            # body = f"""...html..."""
+            if (isinstance(stmt, ast.Assign)
+                    and any(isinstance(t, ast.Name) and t.id == "body"
+                            for t in stmt.targets)):
+                body_src = ast.get_source_segment(src, stmt.value)
+            # return render_template("legal.html", title=..., updated=...)
+            if (isinstance(stmt, ast.Call)
+                    and getattr(stmt.func, "id", "") == "render_template"):
+                for kw in stmt.keywords:
+                    if kw.arg == "title" and isinstance(kw.value, ast.Constant):
+                        title = kw.value.value
+                    if kw.arg == "updated":
+                        if isinstance(kw.value, ast.Name):
+                            updated = consts.get(kw.value.id)
+                        elif isinstance(kw.value, ast.Constant):
+                            updated = kw.value.value
+
+        if not body_src:
+            print("legal pages       SKIPPED " + wanted[node.name] + " (no body found)")
+            continue
+
+        body = unwrap(body_src)
+        for name, value in consts.items():
+            if isinstance(value, str):
+                body = body.replace("{" + name + "}", value)
+
+        updated_html = ('<p class="updated">Last updated ' + updated + "</p>"
+                        if updated else "")
+        html = LEGAL_TEMPLATE.format(title=title, body=body,
+                                     updated_html=updated_html)
+        open(os.path.join(OUT, wanted[node.name]), "w",
+             encoding="utf-8").write(html)
+        written += 1
+
+    return written
+
 s = open(SRC, encoding="utf-8").read()
 
 # 1. Root-absolute -> relative asset paths
 s = s.replace('href="/static/', 'href="static/').replace('src="/static/', 'src="static/')
 
-# 2. Flask-only routes -> the deployed app
-for route in ("/support", "/privacy", "/terms", "/login"):
-    s = s.replace(f'href="{route}"', f'href="{APP}{route}"')
+# 2. Legal routes -> sibling static pages. Only /login points at the app,
+#    since there's nothing to sign in to on a static site.
+for route in ("/support", "/privacy", "/terms"):
+    s = s.replace(f'href="{route}"', f'href="{route.lstrip("/")}.html"')
+s = s.replace('href="/login"', f'href="{APP}/login"')
 
 # 3. Config block the user fills in once
 s = s.replace(
@@ -174,12 +329,15 @@ if os.path.exists(HERO):
     shutil.copy2(HERO, os.path.join(OUT, "static", "landing", "builder.png"))
     hero_size = os.path.getsize(HERO)
 
+legal_written = build_legal_pages()
+
 leftover = re.findall(r'(?:src|href)="/(?!/)[^"]*"', s)
 size = os.path.getsize(os.path.join(OUT, "index.html"))
 
 print(f"site/index.html   {size:,} bytes")
 print(f"assets copied     {copied}/{len(ASSETS)}")
 print(f"absolute paths    {'none' if not leftover else leftover}")
+print(f"legal pages       {legal_written}/3")
 if hero_size:
     print(f"hero screenshot   {hero_size/1000:,.0f} KB"
           + ("   <- large, consider compressing" if hero_size > 500_000 else ""))
