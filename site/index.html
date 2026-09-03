@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RideInsight — Build, compare and share your dream car</title>
+<meta name="description" content="Configure real cars in 3D with real parts and real prices. Compare vehicles, track your garage, and share builds with other enthusiasts.">
+
+<meta property="og:title" content="RideInsight — Build, compare and share your dream car">
+<meta property="og:description" content="A 3D car configurator, comparison tool and community for enthusiasts.">
+<meta property="og:type" content="website">
+
+<link rel="icon" href="static/brand/favicon.ico" sizes="any">
+<link rel="icon" type="image/svg+xml" href="static/brand/logo-navy.svg">
+<link rel="apple-touch-icon" sizes="180x180" href="static/brand/icon-180.png">
+<meta name="theme-color" content="#16202e">
+<meta property="og:image" content="/static/brand/icon-512.png">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  /* Matches the app: navy chrome, light content, red accent */
+  :root {
+    --navy:     #16202e;
+    --navy-2:   #1e2a3a;
+    --bg:       #f7f8fa;
+    --surface:  #ffffff;
+    --border:   #e2e6ec;
+    --text:     #1a2230;
+    --muted:    #64748b;
+    --accent:   #e11d48;
+    --radius:   12px;
+    --shadow:   0 1px 3px rgba(20,30,50,.07);
+    --shadow-md:0 8px 24px -8px rgba(20,30,50,.14);
+  }
+
+  body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+
+  /* ── Nav (mirrors the app header) ── */
+  .topbar { background: var(--navy); }
+  nav {
+    display: flex; align-items: center; justify-content: space-between;
+    height: 64px;
+  }
+  .logo { display:flex; align-items:center; gap:9px; font-size: 21px; font-weight: 700; color: var(--accent); letter-spacing: -.4px; }
+  .nav-cta {
+    font-size: 14px; font-weight: 600; color: #fff; text-decoration: none;
+    background: var(--accent); padding: 9px 18px; border-radius: 8px;
+    transition: opacity .15s;
+  }
+  .nav-cta:hover { opacity: .9; }
+
+  /* ── Hero ── */
+  .hero { padding: 66px 0 52px; text-align: center; }
+  .badge {
+    display: inline-flex; align-items: center; gap: 7px;
+    font-size: 12.5px; font-weight: 600; color: var(--muted);
+    background: var(--surface); border: 1px solid var(--border);
+    padding: 6px 13px; border-radius: 999px; margin-bottom: 22px;
+  }
+  .badge .dot { width: 6px; height: 6px; border-radius: 50%; background: #16a34a; }
+
+  h1 {
+    font-size: clamp(32px, 5vw, 52px); line-height: 1.12;
+    font-weight: 700; letter-spacing: -1.2px; margin-bottom: 18px;
+  }
+  .sub {
+    font-size: clamp(15.5px, 1.8vw, 18px); color: var(--muted);
+    max-width: 590px; margin: 0 auto 30px;
+  }
+
+  /* ── Form ── */
+  .form {
+    display: flex; gap: 9px; max-width: 440px; margin: 0 auto 10px;
+    flex-wrap: wrap; justify-content: center;
+  }
+  .form input {
+    flex: 1; min-width: 230px;
+    padding: 12px 16px; font-size: 15px; font-family: inherit;
+    background: var(--surface); color: var(--text);
+    border: 1px solid var(--border); border-radius: 9px; outline: none;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  .form input::placeholder { color: #9aa5b5; }
+  .form input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(225,29,72,.1); }
+  .form button {
+    padding: 12px 24px; font-size: 15px; font-weight: 600; font-family: inherit;
+    background: var(--accent); color: #fff;
+    border: none; border-radius: 9px; cursor: pointer;
+    transition: opacity .15s; white-space: nowrap;
+  }
+  .form button:hover:not(:disabled) { opacity: .9; }
+  .form button:disabled { opacity: .55; cursor: default; }
+  .form-note { font-size: 12.5px; color: #9aa5b5; }
+  .form-msg { font-size: 14px; font-weight: 600; margin-top: 10px; min-height: 20px; }
+  .form-msg.ok  { color: #16a34a; }
+  .form-msg.err { color: var(--accent); }
+
+  /* ── Screenshot ── */
+  .shot {
+    margin: 44px auto 0; max-width: 940px;
+    border: 1px solid var(--border); border-radius: 14px;
+    overflow: hidden; background: var(--surface); box-shadow: var(--shadow-md);
+  }
+  .shot img { width: 100%; display: block; }
+  .shot-empty {
+    aspect-ratio: 16/9; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 8px;
+    color: #9aa5b5; font-size: 14px; background: #eef1f5;
+  }
+
+  /* ── Sections ── */
+  section { padding: 72px 0; }
+  .section-head { text-align: center; max-width: 580px; margin: 0 auto 40px; }
+  .section-head h2 {
+    font-size: clamp(24px, 3.2vw, 32px); font-weight: 700;
+    letter-spacing: -.6px; margin-bottom: 10px;
+  }
+  .section-head p { color: var(--muted); font-size: 15.5px; }
+
+  .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); }
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 24px; box-shadow: var(--shadow);
+    transition: box-shadow .18s, transform .18s;
+  }
+  .card:hover { box-shadow: var(--shadow-md); transform: translateY(-2px); }
+  .card .ico {
+    width: 38px; height: 38px; border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; margin-bottom: 14px; background: var(--bg);
+    border: 1px solid var(--border);
+  }
+  .card h3 { font-size: 16px; font-weight: 700; margin-bottom: 6px; }
+  .card p  { font-size: 14px; color: var(--muted); }
+
+  /* ── Story (dark band, like the app nav) ── */
+  .band { background: var(--navy); color: #e8edf4; }
+  .band .section-head h2 { color: #fff; }
+  .band .section-head p  { color: #9fb0c6; }
+  .story { display: grid; gap: 30px; grid-template-columns: 1.1fr .9fr; align-items: center; }
+  .story h2 { font-size: 26px; font-weight: 700; letter-spacing: -.6px; margin-bottom: 12px; color: #fff; }
+  .story p  { color: #9fb0c6; font-size: 15px; margin-bottom: 12px; }
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .stat { background: var(--navy-2); border: 1px solid #2b3a4d; border-radius: 10px; padding: 16px; }
+  .stat .n { font-size: 24px; font-weight: 700; letter-spacing: -.6px; color: #fff; }
+  .stat .l { font-size: 11.5px; color: #8ea1b8; text-transform: uppercase; letter-spacing: .06em; }
+
+  /* ── Final ── */
+  .final { text-align: center; }
+  .final h2 { font-size: clamp(26px, 3.4vw, 34px); font-weight: 700; letter-spacing: -.7px; margin-bottom: 10px; }
+  .final p { color: var(--muted); margin-bottom: 26px; }
+
+  footer {
+    border-top: 1px solid var(--border); padding: 26px 0 40px;
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 12px; color: #9aa5b5; font-size: 13.5px;
+  }
+  footer a { color: var(--muted); text-decoration: none; margin-left: 16px; }
+  footer a:hover { color: var(--text); }
+
+  @media (max-width: 760px) {
+    .story { grid-template-columns: 1fr; }
+    section { padding: 54px 0; }
+    .form button { width: 100%; }
+  }
+
+  .followup {
+    margin: 18px auto 0; max-width: 520px; text-align: left;
+    border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px;
+    background: var(--surface);
+  }
+  .followup-title { font-size: 13px; font-weight: 700; margin-bottom: 12px; color: var(--text); }
+  .followup-row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .followup-row input {
+    flex: 1 1 200px; padding: 10px 12px; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--bg); color: var(--text);
+    font-size: 14px; outline: none;
+  }
+  .followup-row input:focus { border-color: var(--accent); }
+  .followup-chips { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  .followup-chips button {
+    padding: 7px 12px; border-radius: 999px; cursor: pointer;
+    border: 1px solid var(--border); background: var(--surface);
+    color: var(--muted); font-size: 12.5px; font-weight: 600;
+  }
+  .followup-chips button:hover { border-color: var(--accent); color: var(--text); }
+  .followup-chips button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .followup-actions { display: flex; align-items: center; gap: 12px; margin-top: 14px; }
+  .followup-actions button:first-child {
+    padding: 9px 20px; border-radius: 8px; border: 0; cursor: pointer;
+    background: var(--accent); color: #fff; font-weight: 700; font-size: 13.5px;
+  }
+  .link-btn { background: none; border: 0; color: var(--muted); cursor: pointer; font-size: 13px; }
+  .link-btn:hover { color: var(--text); }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="wrap">
+    <nav>
+      <div class="logo">
+        <img src="static/brand/logo-red.svg" alt="" width="30" height="30">
+        <span>RideInsight</span>
+      </div>
+      <a class="nav-cta" href="#waitlist">Join waitlist</a>
+    </nav>
+  </div>
+</div>
+
+<!-- HERO -->
+<div class="wrap">
+  <div class="hero" id="waitlist">
+    <div class="badge"><span class="dot"></span> In active development</div>
+    <h1>Build your car in 3D<br>before you spend a dime</h1>
+    <p class="sub">
+      Configure real vehicles with real parts and real prices. Swap wheels, add a spoiler,
+      pick your paint — then see what the whole build actually costs.
+    </p>
+
+    <form class="form" id="waitlistForm" novalidate>
+      <input type="email" id="emailInput" placeholder="you@email.com" required autocomplete="email">
+      <button type="submit" id="submitBtn">Get early access</button>
+    </form>
+    <p class="form-note">No spam. One email when it launches.</p>
+    <p class="form-msg" id="formMsg"></p>
+
+    <!-- Asked only after the email is safely saved, so a skipped answer
+         never costs a signup. -->
+    <div class="followup" id="followup" hidden>
+      <p class="followup-title">Two quick things — both optional</p>
+      <div class="followup-row">
+        <input type="text" id="locInput"  placeholder="City or school (e.g. Atlanta, GA)" autocomplete="address-level2">
+        <input type="text" id="carInput"  placeholder="What do you drive?" autocomplete="off">
+      </div>
+      <div class="followup-chips" id="interestChips">
+        <button type="button" data-interest="buying">Figuring out what to buy</button>
+        <button type="button" data-interest="building">Building / modding</button>
+        <button type="button" data-interest="meets">Meets &amp; community</button>
+      </div>
+      <div class="followup-actions">
+        <button type="button" id="followupSend">Send</button>
+        <button type="button" id="followupSkip" class="link-btn">Skip</button>
+      </div>
+      <p class="form-msg" id="followupMsg"></p>
+    </div>
+
+    <div class="shot">
+      <img src="static/landing/builder.png" alt="RideInsight 3D builder"
+           onerror="this.parentElement.innerHTML='<div class=&quot;shot-empty&quot;><div>Screenshot goes here</div><div style=&quot;font-size:12px&quot;>static/landing/builder.png</div></div>'">
+    </div>
+  </div>
+</div>
+
+<!-- FEATURES -->
+<div class="wrap">
+  <section>
+    <div class="section-head">
+      <h2>Everything in one place</h2>
+      <p>Most car apps do one thing. RideInsight connects the whole journey — researching a car, modding it, and showing it off.</p>
+    </div>
+    <div class="grid">
+      <div class="card">
+        <div class="ico">🔧</div>
+        <h3>3D Build Configurator</h3>
+        <p>Pick a real car and customise it live in 3D — wheels, brakes, spoilers, paint finish and window tint, each with real retail pricing.</p>
+      </div>
+      <div class="card">
+        <div class="ico">⚖️</div>
+        <h3>Compare Vehicles</h3>
+        <p>Cars, motorcycles and boats side by side. Real specs, honest pros and cons, and a recommendation based on how you'll actually use it.</p>
+      </div>
+      <div class="card">
+        <div class="ico">🚗</div>
+        <h3>Your Garage</h3>
+        <p>Track every vehicle you own, log each mod with its cost, and keep a running total of what you've put into the car.</p>
+      </div>
+      <div class="card">
+        <div class="ico">🛒</div>
+        <h3>The Shop</h3>
+        <p>Buy and sell parts with other enthusiasts. List what's sitting in your garage, find what's missing from your build.</p>
+      </div>
+      <div class="card">
+        <div class="ico">👥</div>
+        <h3>Clubs &amp; Meets</h3>
+        <p>Find local car meets, join clubs built around the models you love, and share builds with people who care about the details.</p>
+      </div>
+      <div class="card">
+        <div class="ico">🏁</div>
+        <h3>Drag Race</h3>
+        <p>Take a saved build down the quarter mile. Your mods drive the performance — find out whether the money was worth it.</p>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- STORY -->
+<div class="band">
+  <div class="wrap">
+    <section>
+      <div class="story">
+        <div>
+          <h2>Built by one person, in the open</h2>
+          <p>
+            RideInsight started as a comparison tool and grew into a full platform — including a
+            3D configurator where every vehicle is modelled by hand, part by part.
+          </p>
+          <p>
+            Each car gets its body panels, glass, lights, wheels, brakes and interior separated so
+            they can be swapped individually. It's slow work, and it's why the builder behaves like
+            a real configurator instead of a slideshow.
+          </p>
+        </div>
+        <div class="stats">
+          <div class="stat"><div class="n">6</div><div class="l">Wheel options</div></div>
+          <div class="stat"><div class="n">3</div><div class="l">Vehicle bodies</div></div>
+          <div class="stat"><div class="n">140+</div><div class="l">App routes</div></div>
+          <div class="stat"><div class="n">100%</div><div class="l">Solo built</div></div>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<!-- FINAL -->
+<div class="wrap">
+  <section class="final">
+    <h2>Be first in the garage</h2>
+    <p>Join the waitlist and get access before it opens to everyone.</p>
+    <form class="form" id="waitlistForm2" novalidate>
+      <input type="email" id="emailInput2" placeholder="you@email.com" required autocomplete="email">
+      <button type="submit" id="submitBtn2">Get early access</button>
+    </form>
+    <p class="form-msg" id="formMsg2"></p>
+  </section>
+</div>
+
+<div class="wrap">
+  <footer>
+    <div>© <span id="yr"></span> RideInsight</div>
+    <div>
+      <a href="#waitlist">Waitlist</a>
+      <a href="https://app.rideinsight.com/login">Sign in</a>
+      <a href="https://app.rideinsight.com/support">Support</a>
+      <a href="https://app.rideinsight.com/privacy">Privacy</a>
+      <a href="https://app.rideinsight.com/terms">Terms</a>
+    </div>
+  </footer>
+</div>
+
+<script>
+// ── Configure this, then deploy ───────────────────────────────────
+// Create a free form at https://tally.so or https://formspree.io and
+// paste its endpoint URL here. See site/README.md.
+const FORM_ENDPOINT = 'REPLACE_WITH_YOUR_FORM_ENDPOINT';
+// ──────────────────────────────────────────────────────────────────
+
+document.getElementById('yr').textContent = new Date().getFullYear();
+
+// ── Optional follow-up ─────────────────────────────────────────────────
+let joinedEmail = '';
+let joinedSource = 'landing';
+let chosenInterest = '';
+
+function showFollowup(email, source) {
+  joinedEmail = email;
+  joinedSource = source;
+  const box = document.getElementById('followup');
+  if (box) box.hidden = false;
+}
+
+document.addEventListener('click', (e) => {
+  const chip = e.target.closest('#interestChips button');
+  if (!chip) return;
+  const already = chip.classList.contains('on');
+  document.querySelectorAll('#interestChips button').forEach(b => b.classList.remove('on'));
+  if (!already) { chip.classList.add('on'); chosenInterest = chip.dataset.interest; }
+  else chosenInterest = '';
+});
+
+// Accept: application/json is what stops the browser navigating away to the
+// form service's own thank-you page.
+async function postToForm(payload) {
+  const res = await fetch(FORM_ENDPOINT, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  if (!res.ok) throw new Error('form endpoint returned ' + res.status);
+  return res;
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const send = document.getElementById('followupSend');
+  const skip = document.getElementById('followupSkip');
+  const box  = document.getElementById('followup');
+  const msg  = document.getElementById('followupMsg');
+  if (skip) skip.addEventListener('click', () => { if (box) box.hidden = true; });
+  if (send) send.addEventListener('click', async () => {
+    send.disabled = true;
+    try {
+      await postToForm({
+        _subject: 'RideInsight waitlist — details',
+        type:     'details',
+        email:    joinedEmail,
+        source:   joinedSource,
+        location: (document.getElementById('locInput')?.value || '').trim(),
+        vehicle:  (document.getElementById('carInput')?.value || '').trim(),
+        interest: chosenInterest
+      });
+      if (msg) { msg.textContent = 'Thanks — that helps.'; msg.className = 'form-msg ok'; }
+      setTimeout(() => { if (box) box.hidden = true; }, 1400);
+    } catch (err) {
+      if (msg) { msg.textContent = "Couldn't save that, but you're still on the list."; msg.className = 'form-msg err'; }
+    }
+    send.disabled = false;
+  });
+});
+
+function wireForm(formId, inputId, btnId, msgId) {
+  const form = document.getElementById(formId);
+  if (!form) return;
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const input = document.getElementById(inputId);
+    const btn   = document.getElementById(btnId);
+    const msg   = document.getElementById(msgId);
+    const email = (input.value || '').trim();
+
+    if (!email || !email.includes('@') || !email.includes('.')) {
+      msg.textContent = 'Enter a valid email address.';
+      msg.className = 'form-msg err';
+      return;
+    }
+
+    btn.disabled = true; btn.textContent = 'Joining…'; msg.textContent = '';
+
+    try {
+      // ?src= lets a flyer, a campus QR code and an Instagram link be told
+      // apart later — e.g. /welcome?src=campus-gsu
+      const src = new URLSearchParams(location.search).get('src') || 'landing';
+      await postToForm({
+        _subject: 'RideInsight waitlist — new signup',
+        type:     'signup',
+        email:    email,
+        source:   src
+      });
+      msg.textContent = "You're on the list. We'll be in touch.";
+      msg.className = 'form-msg ok';
+      input.value = ''; btn.textContent = 'Joined ✓';
+      showFollowup(email, src);
+    } catch (err) {
+      msg.textContent = 'Something went wrong. Try again.';
+      msg.className = 'form-msg err';
+      btn.disabled = false; btn.textContent = 'Get early access';
+    }
+  });
+}
+
+wireForm('waitlistForm',  'emailInput',  'submitBtn',  'formMsg');
+wireForm('waitlistForm2', 'emailInput2', 'submitBtn2', 'formMsg2');
+</script>
+</body>
+</html>

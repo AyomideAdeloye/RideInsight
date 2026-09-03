@@ -17,9 +17,29 @@ from werkzeug.utils import secure_filename
 load_dotenv()
 
 app = Flask(__name__)
-app.secret_key = os.getenv("SECRET_KEY", "change-me-in-production")
+
+# Anything other than "development" is treated as production.
+IS_PROD = os.getenv("FLASK_ENV", "development").lower() != "development"
+
+# A known default secret key means anyone can forge a session cookie and log in
+# as any user. Fine locally, fatal in production — so refuse to boot without it
+# rather than starting up quietly insecure.
+SECRET_KEY = os.getenv("SECRET_KEY", "")
+if not SECRET_KEY:
+    if IS_PROD:
+        raise RuntimeError(
+            "SECRET_KEY is not set. Generate one with:\n"
+            "    python -c \"import secrets; print(secrets.token_hex(32))\"\n"
+            "and set it as an environment variable on the host."
+        )
+    SECRET_KEY = "dev-only-not-for-production"
+app.secret_key = SECRET_KEY
+
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+# Only send the session cookie over HTTPS in production. Enabling this locally
+# would break sign-in over plain http://localhost.
+app.config["SESSION_COOKIE_SECURE"] = IS_PROD
 app.config["PERMANENT_SESSION_LIFETIME"] = 86400 * 7  # 7 days
 
 UPLOAD_FOLDER = "static/uploads"
@@ -4840,5 +4860,14 @@ def rsvp_meet(meet_id):
     return jsonify({"action": action, "rsvp_count": count})
 
 if __name__ == "__main__":
+    # Local development only. In production gunicorn imports `app` directly and
+    # never runs this block — see the Procfile.
+    #
+    # debug=True must never reach production: the Werkzeug debugger exposes an
+    # interactive console that executes arbitrary Python on the server.
     init_db()
-    app.run(debug=True, port=5001)
+    app.run(debug=not IS_PROD, port=int(os.getenv("PORT", 5001)))
+else:
+    # Under gunicorn there's no __main__, so migrations would never run and the
+    # first request would hit missing tables.
+    init_db()
