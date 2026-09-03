@@ -99,11 +99,16 @@ const brakeCategory = (stock) => ({
 // aftermarket systems, shared across bodies — so a car can carry its own stock
 // pipe AND the three aftermarket options without them fighting for one slot.
 const EXHAUST_VARIANTS = [
-    { name: "Exhaust_Stock", label: "Stock",     price: 0 },
-    // TODO: real prices + retailer links once sourced
-    { name: "Exhaust_A", label: "Single Exit", price: 0 },
-    { name: "Exhaust_B", label: "Dual Exit",   price: 450, hp: 12, effect: "exhaust" },
-    { name: "Exhaust_C", label: "Quad Tips",   price: 900, hp: 18, effect: "exhaust" },
+    { name: "Exhaust_Stock", label: "Stock", price: 0 },
+    // Axle-back: tips and rear section only, so the smallest gain of the three.
+    { name: "Exhaust_A", label: "Single Exit", price: 655, hp: 6, effect: "exhaust",
+      url: "https://www.importimageracing.com/products/remark-axle-back-exhaust-single-wall-stainless-tips-lexus-is200t-is250-is300-is350-2014-2016-ro-tse2-s" },
+    // Cat-back systems replace everything behind the catalytic converter —
+    // more flow, more noise, more power than an axle-back.
+    { name: "Exhaust_B", label: "Dual Exit", price: 1161, hp: 12, effect: "exhaust",
+      url: "https://www.magnaflow.com/products/15157-magnaflow-street-series-cat-back-performance-exhaust-system-15157" },
+    { name: "Exhaust_C", label: "Quad Tips", price: 1231, hp: 18, effect: "exhaust",
+      url: "https://www.magnaflow.com/products/19393-magnaflow-street-series-cat-back-performance-exhaust-system-19393" },
 ];
 
 // `defaultName` is the slot this body ships wearing — it shows as "Included"
