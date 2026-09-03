@@ -361,9 +361,10 @@
 
 <script>
 // ── Configure this, then deploy ───────────────────────────────────
-// Create a free form at https://tally.so or https://formspree.io and
-// paste its endpoint URL here. See site/README.md.
-const FORM_ENDPOINT = 'REPLACE_WITH_YOUR_FORM_ENDPOINT';
+// Set in web3forms_key.txt at the project root, then re-run
+// tools/build_site.py. Get a free key at https://web3forms.com
+const ACCESS_KEY    = 'fa8fdb35-ba54-4c94-ade0-0be4da4e91eb';
+const FORM_ENDPOINT = 'https://api.web3forms.com/submit';
 // ──────────────────────────────────────────────────────────────────
 
 document.getElementById('yr').textContent = new Date().getFullYear();
@@ -389,16 +390,19 @@ document.addEventListener('click', (e) => {
   else chosenInterest = '';
 });
 
-// Accept: application/json is what stops the browser navigating away to the
-// form service's own thank-you page.
+// access_key identifies the Web3Forms inbox. Accept: application/json is what
+// stops the browser navigating away to their thank-you page.
 async function postToForm(payload) {
   const res = await fetch(FORM_ENDPOINT, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-    body: JSON.stringify(payload)
+    body: JSON.stringify({ access_key: ACCESS_KEY, ...payload })
   });
-  if (!res.ok) throw new Error('form endpoint returned ' + res.status);
-  return res;
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.success === false) {
+    throw new Error(data.message || ('form endpoint returned ' + res.status));
+  }
+  return data;
 }
 
 document.addEventListener('DOMContentLoaded', () => {

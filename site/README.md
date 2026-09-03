@@ -9,23 +9,31 @@ editing both by hand.
 
 ---
 
-## 1. Create a form endpoint (5 minutes, free)
+## 1. Get a Web3Forms access key (2 minutes, free)
 
-The waitlist needs somewhere to send emails. Two options:
+The waitlist needs somewhere to send emails. Go to **https://web3forms.com**,
+enter your email, and they send you an access key. No account, no form builder,
+nothing to configure — 250 submissions a month on the free tier, and every
+submission is emailed to you and kept in a dashboard.
 
-- **Formspree** (formspree.io) — free tier, 50 submissions/month, emails you
-  each one and exports CSV.
-- **Tally** (tally.so) — free tier, unlimited submissions, nicer dashboard.
+Then put the key in **`web3forms_key.txt`** at the project root (replacing the
+placeholder text) and re-run the build:
 
-Create a form, copy its endpoint URL (looks like
-`https://formspree.io/f/xxxxxxx`), then open `index.html` and replace:
-
-```js
-const FORM_ENDPOINT = 'REPLACE_WITH_YOUR_FORM_ENDPOINT';
+```
+python tools/build_site.py
 ```
 
-> 50/month is tight if a campus push goes well. Tally's free tier has no
-> submission cap, so it's the safer choice if you're handing out QR codes.
+Don't paste it into `site/index.html` directly — that file is generated, so the
+next build would wipe it.
+
+> **Why not Tally or Formspree?** Tally expects you to build fields in their UI
+> and send people to their hosted page — it isn't designed to receive JSON from
+> your own frontend. Formspree does exactly what's needed but caps the free tier
+> at 50 submissions/month, which one good campus day would exhaust.
+
+> The access key is visible in the page source. That's normal and by design for
+> these services — it can only be used to send submissions to your inbox, not to
+> read them. If you get spammed, rotate the key.
 
 ## 2. Point the legal links at the app
 

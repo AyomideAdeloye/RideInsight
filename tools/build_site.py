@@ -23,6 +23,17 @@ APP   = "https://app.rideinsight.com"
 ASSETS = ["favicon.ico", "icon-180.png", "icon-512.png",
           "logo-navy.svg", "logo-red.svg"]
 
+# The Web3Forms access key is read from web3forms_key.txt (or the WEB3FORMS_KEY
+# environment variable) rather than pasted into the generated HTML — otherwise
+# re-running this script would silently wipe it and the waitlist would break.
+# The key is not a secret: it ends up in the page source by design, and can only
+# send submissions to your inbox, not read them.
+KEY_FILE = "web3forms_key.txt"
+ACCESS_KEY = os.getenv("WEB3FORMS_KEY", "").strip()
+if not ACCESS_KEY and os.path.exists(KEY_FILE):
+    ACCESS_KEY = open(KEY_FILE, encoding="utf-8").read().strip()
+ACCESS_KEY = ACCESS_KEY or "REPLACE_WITH_YOUR_WEB3FORMS_ACCESS_KEY"
+
 s = open(SRC, encoding="utf-8").read()
 
 # 1. Root-absolute -> relative asset paths
@@ -36,13 +47,15 @@ for route in ("/support", "/privacy", "/terms", "/login"):
 s = s.replace(
     "document.getElementById('yr').textContent = new Date().getFullYear();",
     """// ── Configure this, then deploy ───────────────────────────────────
-// Create a free form at https://tally.so or https://formspree.io and
-// paste its endpoint URL here. See site/README.md.
-const FORM_ENDPOINT = 'REPLACE_WITH_YOUR_FORM_ENDPOINT';
+// Set in web3forms_key.txt at the project root, then re-run
+// tools/build_site.py. Get a free key at https://web3forms.com
+const ACCESS_KEY    = '__ACCESS_KEY__';
+const FORM_ENDPOINT = 'https://api.web3forms.com/submit';
 // ──────────────────────────────────────────────────────────────────
 
 document.getElementById('yr').textContent = new Date().getFullYear();""",
     1)
+s = s.replace("__ACCESS_KEY__", ACCESS_KEY)
 
 # 4. Swap the Flask waitlist calls for a form-service POST.
 #    A form service has no session, so there's no token to carry between the
@@ -69,16 +82,19 @@ document.addEventListener('click', (e) => {
   else chosenInterest = '';
 });
 
-// Accept: application/json is what stops the browser navigating away to the
-// form service's own thank-you page.
+// access_key identifies the Web3Forms inbox. Accept: application/json is what
+// stops the browser navigating away to their thank-you page.
 async function postToForm(payload) {
   const res = await fetch(FORM_ENDPOINT, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-    body: JSON.stringify(payload)
+    body: JSON.stringify({ access_key: ACCESS_KEY, ...payload })
   });
-  if (!res.ok) throw new Error('form endpoint returned ' + res.status);
-  return res;
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.success === false) {
+    throw new Error(data.message || ('form endpoint returned ' + res.status));
+  }
+  return data;
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -154,5 +170,8 @@ size = os.path.getsize(os.path.join(OUT, "index.html"))
 print(f"site/index.html   {size:,} bytes")
 print(f"assets copied     {copied}/{len(ASSETS)}")
 print(f"absolute paths    {'none' if not leftover else leftover}")
-if "REPLACE_WITH_YOUR_FORM_ENDPOINT" in s:
-    print("\nNext: set FORM_ENDPOINT in site/index.html — see site/README.md")
+if ACCESS_KEY.startswith("REPLACE_"):
+    print(f"\n!  No access key yet. Put it in {KEY_FILE} and re-run this script.")
+    print("   Get one free at https://web3forms.com")
+else:
+    print(f"access key        set ({ACCESS_KEY[:8]}…)")
