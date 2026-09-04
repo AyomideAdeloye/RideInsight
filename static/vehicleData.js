@@ -309,6 +309,31 @@ const motoData = [
     { make:"Yamaha", model:"XSR900", type:"Naked", displacement:"890", engine:"Inline 3 DOHC", power:"117 HP", torque:"93 Nm", weight_kg:192.8, seat_height_mm:810 },
     // ── Zero ──
     { make:"Zero", model:"SR/F", type:"Naked", displacement:"—", engine:"Electric AC Motor", power:"112 HP", torque:"190 Nm", weight_kg:227, seat_height_mm:787 },
+
+    // ── Second batch ────────────────────────────────────────────────
+    // Indian's Thunderstroke 111 has no published crank horsepower — the
+    // torque figure is what they quote. Left blank rather than invented; the
+    // VS section drops empty rows rather than showing a wrong number.
+    // ────────────────────────────────────────────────────────────────
+    // ── Aprilia ──
+    { make:"Aprilia", model:"Tuareg 660", type:"Adventure", displacement:"659", engine:"Parallel Twin DOHC", power:"80 HP", torque:"70 Nm", weight_kg:203.7, seat_height_mm:860 },
+    // ── Can-Am ──
+    { make:"Can-Am", model:"Ryker", type:"Trike", displacement:"900", engine:"Inline 3 Rotax 900 ACE", power:"82 HP", torque:"79 Nm", weight_kg:279.9, seat_height_mm:629 },
+    // ── Honda ──
+    { make:"Honda", model:"Grom", type:"Naked", displacement:"124", engine:"Single Cylinder Air-Cooled", power:"9.7 HP", torque:"10.4 Nm", weight_kg:101.6, seat_height_mm:762 },
+    // ── Indian ──
+    { make:"Indian", model:"Chief", type:"Cruiser", displacement:"1811", engine:"V-Twin Thunderstroke 111", power:"", torque:"146 Nm", weight_kg:303.9, seat_height_mm:660 },
+    // ── Kawasaki ──
+    { make:"Kawasaki", model:"Eliminator", type:"Cruiser", displacement:"451", engine:"Parallel Twin DOHC", power:"51 HP", torque:"43 Nm", weight_kg:176, seat_height_mm:734 },
+    // ── Royal Enfield ──
+    { make:"Royal Enfield", model:"Hunter 350", type:"Naked", displacement:"349", engine:"Single Cylinder SOHC", power:"20 HP", torque:"27 Nm", weight_kg:181, seat_height_mm:790 },
+    // ── Suzuki ──
+    { make:"Suzuki", model:"GSX-S1000", type:"Naked", displacement:"999", engine:"Inline 4 DOHC", power:"150 HP", torque:"106 Nm", weight_kg:214.1, seat_height_mm:810 },
+    // ── Triumph ──
+    { make:"Triumph", model:"Speed Twin 900", type:"Naked", displacement:"900", engine:"Parallel Twin SOHC", power:"64 HP", torque:"80 Nm", weight_kg:215.9, seat_height_mm:780 },
+    { make:"Triumph", model:"Speed Twin 1200", type:"Naked", displacement:"1200", engine:"Parallel Twin SOHC", power:"104 HP", torque:"112 Nm", weight_kg:215.9, seat_height_mm:805 },
+    // ── Zero ──
+    { make:"Zero", model:"DSR/X", type:"Adventure", displacement:"—", engine:"Electric AC Motor", power:"100 HP", torque:"229 Nm", weight_kg:247, seat_height_mm:828 },
 ];
 
 function searchMotoData(make, model) {
