@@ -1,7 +1,31 @@
-﻿.env
+# NOTE: this file must be saved WITHOUT a UTF-8 BOM. A BOM attaches itself to
+# the first line, so ".env" silently becomes "﻿.env" and matches nothing —
+# which is exactly what happened here. In VS Code the status bar should read
+# "UTF-8", not "UTF-8 with BOM".
+
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+
+# Python
 __pycache__/
 *.pyc
+*.pyo
+
+# Local database and user uploads
 rideinsight.db
+*.db-journal
 static/uploads/
+
+# Blender working files
 *.blend
 *.blend1
+
+# OS noise
+.DS_Store
+Thumbs.db
+
+# Artifacts left by editing over a FUSE mount — deleted files still held open.
+# Safe to remove.
+.fuse_hidden*

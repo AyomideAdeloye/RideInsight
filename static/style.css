@@ -902,6 +902,24 @@ input, textarea, select { font-family: var(--font); }
     overflow: hidden;
 }
 .notif-dropdown.open { display: block; }
+/* A long list otherwise runs off the bottom of the screen with no way back. */
+.notif-dropdown { max-height: 70vh; overflow-y: auto; }
+
+/* On phones the 320px panel overhangs the edge. Positioning it against the
+   viewport rather than an ancestor is what matters here: as `position:
+   absolute` it sizes against the nearest positioned parent, so pinning left
+   and right collapsed it to a thin bar. `fixed` takes the viewport, which is
+   what "full width minus a margin" actually means. */
+@media (max-width: 460px) {
+    .notif-dropdown {
+        position: fixed;
+        top: calc(var(--navbar-h) + 4px);
+        left: 8px;
+        right: 8px;
+        width: auto;
+        max-height: calc(100vh - var(--navbar-h) - 24px);
+    }
+}
 .notif-header {
     padding: 14px 16px;
     font-weight: 700;
@@ -1520,6 +1538,12 @@ input, textarea, select { font-family: var(--font); }
 }
 .pv-label { font-size: 12px; font-weight: 600; }
 .pv-price { font-size: 10px; font-weight: 500; opacity: 0.65; }
+/* Optional per-variant footnote — used where the sticker price needs context,
+   e.g. wheels quoted per wheel rather than per set. */
+.pv-note {
+    font-size: 9.5px; font-weight: 500; opacity: 0.7; line-height: 1.3;
+    display: block; max-width: 100%;
+}
 .part-variant-btn.active .pv-price { opacity: 0.9; }
 
 /* Model match banner */
@@ -5429,13 +5453,13 @@ html.dark-mode.scheme-blue   { --accent-light: #1e3a5f; }
     right: 0;
     bottom: 0;
     display: none;               /* toggled by JS during a race */
-    justify-content: flex-end;   /* drag race: pedals on the right only */
+    justify-content: space-between;  /* nitro left, gas+brake right */
     align-items: flex-end;
     padding: 14px 16px 18px;
     pointer-events: none;        /* only the buttons capture touches */
     z-index: 8;
 }
-.rtc-left, .rtc-right { display: flex; gap: 10px; align-items: flex-end; pointer-events: auto; }
+.rtc-left, .rtc-right { display: flex; gap: 22px; align-items: flex-end; pointer-events: auto; }
 
 .rtc-btn {
     width: 58px;
@@ -5469,9 +5493,10 @@ html.dark-mode.scheme-blue   { --accent-light: #1e3a5f; }
     .race-controls-hint { display: none !important; }
 }
 @media (max-width: 640px) {
-    .rtc-btn   { width: 52px; height: 52px; }
-    .rtc-gas   { width: 60px; height: 60px; }
-    .rtc-btn i { width: 22px; height: 22px; }
+    /* Targets stay 58/68px — Apple and Google both put the minimum comfortable
+       touch target around 44px, and these are pressed under time pressure. */
+    .rtc-left, .rtc-right { gap: 18px; }
+    .rtc-btn i { width: 24px; height: 24px; }
     .race-touch-controls { padding: 10px 12px 14px; }
     .race-mode-tabs { overflow-x: auto; }
     .race-tab { white-space: nowrap; flex-shrink: 0; }
@@ -6147,4 +6172,463 @@ html.dark-mode.scheme-blue   { --accent-light: #1e3a5f; }
 @media (max-width: 600px) {
     .logo span { display: none; }   /* mark only on small screens */
     .logo-mark { width: 28px; height: 28px; }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Fit Guides
+   Colour-coded on verdict, not on a raw number, because some cars are
+   a bad recommendation for reasons a single measurement misses.
+   Uses --green/--orange/--red, which are defined in both themes.
+   ═══════════════════════════════════════════════════════════════ */
+
+.guides-page, .guide-page { max-width: 780px; margin: 0 auto; padding: 20px 16px 60px; }
+
+.guides-header h2, .guide-header h2 {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 26px; letter-spacing: -0.5px; margin-bottom: 6px;
+}
+.guides-sub { color: var(--text-muted); font-size: 15px; margin-bottom: 24px; }
+
+/* ── Index ── */
+.guide-list { display: flex; flex-direction: column; gap: 12px; }
+.guide-card {
+    display: flex; align-items: center; gap: 16px; text-decoration: none;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 18px 20px; color: var(--text);
+    box-shadow: var(--shadow); transition: transform .12s, box-shadow .12s;
+}
+.guide-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+.guide-card-icon {
+    flex: 0 0 44px; height: 44px; border-radius: 10px;
+    background: var(--accent-light); color: var(--accent);
+    display: grid; place-items: center;
+}
+.guide-card-body { flex: 1; min-width: 0; }
+.guide-card-body h3 { font-size: 17px; margin-bottom: 4px; }
+.guide-card-blurb { font-size: 14px; color: var(--text-muted); line-height: 1.5; }
+.guide-card-meta {
+    display: flex; gap: 14px; flex-wrap: wrap;
+    margin-top: 8px; font-size: 12.5px; color: var(--text-muted);
+}
+.guide-card-meta span { display: inline-flex; align-items: center; gap: 5px; }
+.guide-card-meta i, .guide-meta i { width: 13px; height: 13px; }
+.guide-card-arrow { color: var(--text-muted); flex: 0 0 auto; }
+.guide-empty { text-align: center; padding: 60px 20px; color: var(--text-muted); }
+
+/* ── Detail ── */
+.guide-back {
+    display: inline-flex; align-items: center; gap: 6px; margin-bottom: 18px;
+    font-size: 13.5px; font-weight: 600; color: var(--text-muted); text-decoration: none;
+}
+.guide-back:hover { color: var(--accent); }
+.guide-back i { width: 15px; height: 15px; }
+.guide-meta {
+    display: flex; gap: 16px; flex-wrap: wrap;
+    font-size: 13px; color: var(--text-muted); margin-bottom: 26px;
+}
+.guide-meta span { display: inline-flex; align-items: center; gap: 5px; }
+
+.guide-body { font-size: 16px; line-height: 1.7; }
+.guide-body h2 {
+    font-size: 21px; margin: 34px 0 12px; letter-spacing: -0.3px;
+    padding-bottom: 8px; border-bottom: 1px solid var(--border);
+}
+.guide-body p { margin-bottom: 14px; }
+.guide-body ol, .guide-body ul { margin: 0 0 16px 22px; }
+.guide-body li { margin-bottom: 9px; }
+.guide-body strong { font-weight: 700; }
+.guide-raw { white-space: pre-wrap; font-family: var(--font); }
+
+/* ── Ranked bars ── */
+.guide-rank { margin: 32px 0; }
+.guide-rank h3 { font-size: 17px; margin-bottom: 14px; }
+.fit-bars {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 18px 20px;
+}
+.fit-bar-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.fit-bar-row:last-child { margin-bottom: 0; }
+.fit-bar-label {
+    flex: 0 0 42%; font-size: 13.5px; font-weight: 600;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.fit-bar-track {
+    flex: 1; height: 9px; background: var(--bg);
+    border-radius: 5px; overflow: hidden;
+}
+.fit-bar-fill { height: 100%; border-radius: 5px; background: var(--text-muted); }
+.fit-pick  .fit-bar-fill { background: var(--green); }
+.fit-ok    .fit-bar-fill { background: var(--accent); }
+.fit-watch .fit-bar-fill { background: var(--orange); }
+.fit-avoid .fit-bar-fill { background: var(--red); }
+.fit-bar-num {
+    flex: 0 0 52px; text-align: right;
+    font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums;
+}
+.fit-scale-note { font-size: 12px; color: var(--text-muted); margin-top: 10px; }
+
+/* ── Tier tables ── */
+.guide-tier { margin: 34px 0; }
+.guide-tier-head {
+    display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 12px;
+}
+.guide-tier-head h3 { font-size: 18px; }
+.guide-tier-sub { font-size: 13px; color: var(--text-muted); }
+
+.fit-table-wrap {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); overflow-x: auto;
+}
+.fit-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.fit-table th {
+    text-align: left; padding: 11px 14px; font-size: 11.5px;
+    text-transform: uppercase; letter-spacing: .05em;
+    color: var(--text-muted); border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+}
+.fit-table td { padding: 12px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.fit-table tr:last-child td { border-bottom: none; }
+.fit-car { font-weight: 600; }
+.fit-car-sub { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+.fit-num { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
+
+.fit-roof-warn {
+    display: inline-flex; align-items: center; gap: 4px; margin-top: 4px;
+    font-size: 11.5px; font-weight: 600; color: var(--orange);
+}
+.fit-roof-warn i { width: 12px; height: 12px; }
+
+.fit-pill {
+    display: inline-block; padding: 3px 10px; border-radius: 20px;
+    font-size: 11.5px; font-weight: 700; white-space: nowrap;
+}
+.fit-pill-pick  { background: var(--green);  color: #fff; }
+.fit-pill-ok    { background: var(--accent); color: #fff; }
+.fit-pill-watch { background: var(--orange); color: #fff; }
+.fit-pill-avoid { background: var(--red);    color: #fff; }
+.fit-pill-unknown { background: var(--border); color: var(--text-muted); }
+
+/* Note rows hang off the row above, so they lose its top border. */
+.fit-note-row td { padding-top: 0; border-bottom: 1px solid var(--border); }
+.fit-note { font-size: 13.5px; line-height: 1.6; color: var(--text-muted); }
+.fit-community {
+    display: flex; align-items: flex-start; gap: 6px; margin-top: 8px;
+    font-size: 13px; color: var(--accent);
+}
+.fit-community i { width: 14px; height: 14px; flex: 0 0 auto; margin-top: 2px; }
+
+/* ── Pending research ── */
+.guide-pending {
+    margin: 34px 0; padding: 20px 22px;
+    background: var(--surface); border: 1px dashed var(--border);
+    border-radius: var(--radius);
+}
+.guide-pending h3 {
+    display: flex; align-items: center; gap: 8px; font-size: 16px; margin-bottom: 6px;
+}
+.guide-pending h3 i { width: 16px; height: 16px; color: var(--text-muted); }
+.guide-pending-sub { font-size: 13.5px; color: var(--text-muted); margin-bottom: 14px; }
+.guide-pending ul { list-style: none; display: flex; flex-direction: column; gap: 12px; }
+.guide-pending li { font-size: 14px; }
+.guide-pending li .fit-car-sub { display: inline; margin-left: 6px; }
+
+/* ── Sources & CTA ── */
+.guide-sources {
+    margin: 28px 0; padding: 14px 18px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+}
+.guide-sources summary {
+    cursor: pointer; font-size: 13.5px; font-weight: 600; color: var(--text-muted);
+}
+.guide-sources ul { margin: 12px 0 4px 20px; }
+.guide-sources li { margin-bottom: 7px; font-size: 13px; }
+.guide-sources a { color: var(--accent); text-decoration: none; }
+.guide-sources a:hover { text-decoration: underline; }
+
+.guide-cta {
+    margin-top: 30px; padding: 22px; text-align: center;
+    background: var(--accent-light); border-radius: var(--radius);
+}
+.guide-cta p { font-size: 14.5px; margin-bottom: 12px; }
+.guide-cta-btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--accent); color: #fff; text-decoration: none;
+    padding: 10px 20px; border-radius: 8px; font-weight: 600; font-size: 14px;
+}
+.guide-cta-btn:hover { background: var(--accent-dark); }
+.guide-cta-btn i { width: 16px; height: 16px; }
+
+@media (max-width: 600px) {
+    .fit-bar-label { flex-basis: 38%; font-size: 12.5px; }
+    .fit-table th, .fit-table td { padding: 10px; }
+    .guide-body { font-size: 15px; }
+}
+
+/* ── Fit block on the comparison page ── */
+.fit-compare {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 20px 22px; margin: 20px 0;
+    box-shadow: var(--shadow);
+}
+.fit-compare-head {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; flex-wrap: wrap; margin-bottom: 16px;
+}
+.fit-compare-head h2 {
+    display: flex; align-items: center; gap: 8px; font-size: 18px; margin: 0;
+}
+.fit-compare-head h2 i { width: 18px; height: 18px; color: var(--accent); }
+.fit-compare-link {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 13px; font-weight: 600; color: var(--accent); text-decoration: none;
+}
+.fit-compare-link:hover { text-decoration: underline; }
+.fit-compare-link i { width: 14px; height: 14px; }
+
+.fit-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.fit-col {
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 10px; padding: 16px; text-align: center;
+    /* Verdict colour reads off the top edge so it survives dark mode, where a
+       tinted background would fight the surface colour. */
+    border-top: 3px solid var(--text-muted);
+}
+.fit-col.fit-pick  { border-top-color: var(--green); }
+.fit-col.fit-ok    { border-top-color: var(--accent); }
+.fit-col.fit-watch { border-top-color: var(--orange); }
+.fit-col.fit-avoid { border-top-color: var(--red); }
+.fit-col-empty { opacity: .6; }
+.fit-col-name { font-size: 13.5px; font-weight: 700; margin-bottom: 8px; }
+.fit-col-num {
+    font-size: 30px; font-weight: 800; letter-spacing: -1px;
+    font-variant-numeric: tabular-nums; line-height: 1.1;
+}
+.fit-col-cap {
+    font-size: 11px; text-transform: uppercase; letter-spacing: .05em;
+    color: var(--text-muted); margin-bottom: 10px;
+}
+.fit-col .fit-roof-warn { justify-content: center; margin-bottom: 8px; }
+.fit-col .fit-car-sub { margin-bottom: 8px; }
+.fit-col-none { font-size: 13px; color: var(--text-muted); padding: 14px 0; }
+
+.fit-verdict {
+    text-align: center; font-size: 14.5px; margin-top: 16px;
+    padding: 12px; background: var(--accent-light); border-radius: 8px;
+}
+.fit-compare-note {
+    font-size: 12px; color: var(--text-muted); margin-top: 12px; line-height: 1.5;
+}
+.fit-inline { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.fit-inline-num { font-size: 13px; font-weight: 600; }
+
+@media (max-width: 560px) {
+    .fit-cols { grid-template-columns: 1fr; }
+    .fit-col-num { font-size: 26px; }
+}
+
+/* Bike type chip in the seat-height guide. */
+.bike-type {
+    display: inline-block; padding: 3px 9px; border-radius: 20px;
+    background: var(--bg); border: 1px solid var(--border);
+    font-size: 11.5px; font-weight: 600; color: var(--text-muted);
+    white-space: nowrap;
+}
+
+/* Offline fallback page (served by the service worker). */
+.offline-page {
+    max-width: 420px; margin: 60px auto; padding: 40px 24px;
+    text-align: center; color: var(--text);
+}
+.offline-page i[data-lucide] { width: 44px; height: 44px; color: var(--text-muted); }
+.offline-page h2 { font-size: 22px; margin: 16px 0 8px; }
+.offline-page p { color: var(--text-muted); font-size: 15px; line-height: 1.6; }
+.offline-retry {
+    display: inline-flex; align-items: center; gap: 8px; margin-top: 22px;
+    background: var(--accent); color: #fff; border: none; cursor: pointer;
+    padding: 10px 20px; border-radius: 8px; font-weight: 600; font-size: 14px;
+    font-family: var(--font);
+}
+.offline-retry:hover { background: var(--accent-dark); }
+.offline-retry i { width: 16px; height: 16px; }
+
+/* Reports queue */
+.report-tabs { display: flex; gap: 8px; margin-bottom: 18px; flex-wrap: wrap; }
+.report-tab {
+    padding: 7px 14px; border-radius: 20px; font-size: 13px; font-weight: 600;
+    text-decoration: none; color: var(--text-muted);
+    background: var(--surface); border: 1px solid var(--border);
+}
+.report-tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.report-list { display: flex; flex-direction: column; gap: 14px; }
+.report-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 16px 18px; box-shadow: var(--shadow);
+}
+.report-head { display: flex; justify-content: space-between; margin-bottom: 10px; }
+.report-type {
+    font-size: 10.5px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .06em; color: var(--accent);
+    background: var(--accent-light); padding: 3px 9px; border-radius: 20px;
+}
+.report-when { font-size: 12px; color: var(--text-muted); }
+.report-line { font-size: 14.5px; margin-bottom: 8px; }
+.report-line a { color: var(--accent); text-decoration: none; }
+.report-reason { font-size: 13.5px; color: var(--text-muted); margin-bottom: 10px; }
+.report-content {
+    margin: 0 0 12px; padding: 10px 14px; font-size: 14px; line-height: 1.55;
+    background: var(--bg); border-left: 3px solid var(--border);
+    border-radius: 0 6px 6px 0; white-space: pre-wrap; word-break: break-word;
+}
+.report-meta { font-size: 12.5px; color: var(--text-muted); }
+
+/* Overflow menu on posts and comments (report / block / delete) */
+.post-header-right { display: flex; align-items: center; gap: 6px; }
+.pmenu { position: relative; display: inline-block; }
+.pmenu-btn {
+    background: none; border: none; cursor: pointer; padding: 4px 6px;
+    color: var(--text-muted); border-radius: 6px; line-height: 0;
+}
+.pmenu-btn:hover { background: var(--bg); color: var(--text); }
+.pmenu-btn i { width: 18px; height: 18px; }
+.pmenu-drop {
+    display: none; position: absolute; right: 0; top: calc(100% + 4px);
+    min-width: 190px; z-index: 50;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; box-shadow: var(--shadow-lg); overflow: hidden;
+}
+.pmenu-drop.open { display: block; }
+.pmenu-item {
+    display: flex; align-items: center; gap: 9px; width: 100%;
+    background: none; border: none; cursor: pointer; text-align: left;
+    padding: 11px 14px; font-size: 13.5px; font-weight: 500;
+    color: var(--text); font-family: var(--font);
+}
+.pmenu-item:hover { background: var(--bg); }
+.pmenu-item i { width: 15px; height: 15px; flex: 0 0 auto; }
+.pmenu-danger { color: var(--red); }
+/* Comment menus sit in a row of small buttons, so shrink to match. */
+.cmenu .pmenu-btn { padding: 2px 4px; }
+.cmenu .pmenu-btn i { width: 15px; height: 15px; }
+
+/* Story action sheet — "view yours" vs "add another". */
+.story-sheet-backdrop {
+    position: fixed; inset: 0; z-index: 300;
+    background: rgba(0,0,0,.45);
+    display: flex; align-items: flex-end; justify-content: center;
+    padding: 16px;
+}
+.story-sheet {
+    width: 100%; max-width: 420px;
+    background: var(--surface); border-radius: 14px; overflow: hidden;
+    box-shadow: var(--shadow-lg);
+}
+.story-sheet-item {
+    display: flex; align-items: center; gap: 10px; width: 100%;
+    background: none; border: none; border-bottom: 1px solid var(--border);
+    cursor: pointer; text-align: left; padding: 16px 18px;
+    font-size: 15px; font-weight: 500; color: var(--text); font-family: var(--font);
+}
+.story-sheet-item:last-child { border-bottom: none; }
+.story-sheet-item:hover { background: var(--bg); }
+.story-sheet-item i { width: 18px; height: 18px; }
+.story-sheet-cancel { justify-content: center; color: var(--text-muted); font-weight: 600; }
+
+/* Overflow menus must not run off a narrow screen either. */
+@media (max-width: 460px) {
+    .pmenu-drop { min-width: 170px; max-width: 78vw; }
+}
+
+/* Race distance selector */
+.race-distance {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; flex-wrap: wrap; margin: 14px 0 4px;
+}
+.race-distance-label {
+    font-size: 12px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .06em; color: var(--text-muted);
+}
+.race-distance-opts { display: flex; gap: 8px; flex-wrap: wrap; }
+.dist-opt {
+    padding: 8px 14px; border-radius: 20px; cursor: pointer;
+    background: var(--surface); border: 1px solid var(--border);
+    color: var(--text-muted); font-size: 13px; font-weight: 600;
+    font-family: var(--font);
+}
+.dist-opt.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+/* Blocked accounts list in Settings → Privacy */
+.blocked-list { display: flex; flex-direction: column; gap: 4px; }
+.blocked-row {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; padding: 10px 2px; border-bottom: 1px solid var(--border);
+}
+.blocked-row:last-child { border-bottom: none; }
+.blocked-who { display: flex; align-items: center; gap: 10px; font-size: 14.5px; font-weight: 500; }
+.blocked-avatar { width: 34px; height: 34px; border-radius: 50%; object-fit: cover; flex: 0 0 auto; }
+.blocked-avatar-letter {
+    display: grid; place-items: center; font-weight: 700; font-size: 14px;
+    background: var(--accent); color: #fff;
+}
+.blocked-empty { color: var(--text-muted); font-size: 14px; padding: 8px 0; }
+
+/* ── Sidebar hero: Compare ────────────────────────────────────────
+   Comparison is the job the app exists to do, so this is styled as a real
+   call-to-action rather than another nav row.
+
+   Selectors are prefixed with .left-sidebar because the generic
+   ".left-sidebar p i" rule (specificity 0,1,2) otherwise wins and paints the
+   icon muted grey on top of the accent fill — which is what made it look like
+   every other item.                                                        */
+.left-sidebar .sidebar-hero {
+    padding: 0;
+    margin-bottom: 18px;
+    border: none;
+    background: none;
+}
+
+.left-sidebar p.sidebar-hero-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 0 0 8px;
+    padding: 15px 16px;
+    border-radius: 12px;
+    color: #fff;
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dark) 100%);
+    box-shadow: 0 4px 14px rgba(37, 99, 235, .35);
+    transition: transform .12s ease, box-shadow .12s ease;
+}
+.left-sidebar p.sidebar-hero-item:hover {
+    background: linear-gradient(135deg, var(--accent-dark) 0%, var(--accent-dark) 100%);
+    color: #fff;
+    transform: translateY(-1px);
+    box-shadow: 0 6px 18px rgba(37, 99, 235, .45);
+}
+/* Beats ".left-sidebar p i" on specificity so the icon stays white. */
+.left-sidebar p.sidebar-hero-item i,
+.left-sidebar p.sidebar-hero-item [data-lucide],
+.left-sidebar p.sidebar-hero-item:hover i {
+    color: #fff;
+    width: 22px;
+    height: 22px;
+}
+.left-sidebar .sidebar-hero-item strong {
+    display: block;
+    font-size: 15px;
+    font-weight: 800;
+    letter-spacing: -.2px;
+    line-height: 1.2;
+}
+.left-sidebar .sidebar-hero-item small {
+    display: block;
+    font-size: 11.5px;
+    font-weight: 500;
+    opacity: .9;
+    margin-top: 3px;
+    line-height: 1.3;
+}
+/* The two supporting links sit quietly beneath it. */
+.left-sidebar .sidebar-hero p:not(.sidebar-hero-item) {
+    font-size: 13.5px;
+    padding: 8px 12px;
 }

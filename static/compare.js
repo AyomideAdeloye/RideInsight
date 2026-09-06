@@ -458,6 +458,7 @@ async function compareCars(v1Override, v2Override) {
             <div id="right-car"></div>
         </div>
         ${vsSection}
+        <div id="fitSection"></div>
         ${buildWildSection(v1, v2, type)}
         <div class="similarities-box">
             <h2>Similarities</h2>
@@ -479,6 +480,94 @@ async function compareCars(v1Override, v2Override) {
     // The wild section renders empty above; fill the first tab now that it's
     // actually in the DOM.
     if (document.getElementById("wildGallery")) showWildTab(0);
+    if (window.refreshIcons) window.refreshIcons();
+
+    // Fills itself in once /api/fit_data resolves. Deliberately not awaited —
+    // the comparison is useful without it, and a slow or failed fetch must
+    // never delay the results the user actually asked for.
+    renderFitSection(v1, v2, type);
+}
+
+// ─── Fit for tall drivers ──────────────────────────────────────────
+// Spec tables quote legroom and bury headroom, so the one measurement that
+// decides whether a tall driver fits is the one nobody compares. If either
+// car is in the Fit Guide dataset, surface it here.
+//
+// Cars only: motorcycles have seat_height_mm, which is a different question
+// and gets its own guide.
+async function renderFitSection(v1, v2, type) {
+    const host = document.getElementById("fitSection");
+    if (!host || type !== "car") return;
+    if (typeof loadFitData !== "function") return;   // fitData.js not loaded
+
+    const data = await loadFitData();
+    if (!data.cars || !data.cars.length) return;
+
+    // Year matters: an entry only matches a car built in that generation.
+    const pair = [v1, v2].map(v =>
+        (v && !v._notFound) ? findFitCar(data, v.make, v.model, v.year) : null);
+    if (!pair[0] && !pair[1]) return;                // neither car is covered
+
+    const names = [v1, v2].map((v, i) =>
+        (v && v.make) ? `${v.make} ${v.model}` : `Vehicle ${i + 1}`);
+
+    const col = (car, name) => {
+        if (!car) {
+            return `<div class="fit-col fit-col-empty">
+                <div class="fit-col-name">${name}</div>
+                <p class="fit-col-none">Not measured yet</p>
+            </div>`;
+        }
+        // The honest number is the one with the roof fitted, where published.
+        const roof = car.headroomRoof != null
+            ? `<div class="fit-roof-warn"><i data-lucide="alert-triangle"></i>
+                 ${car.headroomRoof}" with sunroof</div>` : "";
+        const range = car.range
+            ? `<div class="fit-car-sub">${car.range}</div>` : "";
+        return `<div class="fit-col fit-${car.verdictKey}">
+            <div class="fit-col-name">${car.make} ${car.model}</div>
+            <div class="fit-col-num">${car.headroom}"</div>
+            <div class="fit-col-cap">front headroom</div>
+            ${roof}${range}
+            <span class="fit-pill fit-pill-${car.verdictKey}">${FIT_LABELS[car.verdictKey] || ""}</span>
+        </div>`;
+    };
+
+    // Only claim a gap when both sides are known — the same guard the VS bars
+    // use, for the same reason.
+    let verdict = "";
+    if (pair[0] && pair[1]) {
+        const a = fitHeadroom(pair[0]), b = fitHeadroom(pair[1]);
+        const gap = Math.abs(a - b).toFixed(1);
+        if (Math.abs(a - b) < 0.3) {
+            verdict = `<p class="fit-verdict">Effectively identical on headroom
+                — decide on something else.</p>`;
+        } else {
+            const roomier = a > b ? pair[0] : pair[1];
+            verdict = `<p class="fit-verdict">
+                The <strong>${roomier.make} ${roomier.model}</strong> gives you
+                <strong>${gap}"</strong> more headroom.</p>`;
+        }
+    }
+
+    host.innerHTML = `
+        <div class="fit-compare">
+            <div class="fit-compare-head">
+                <h2><i data-lucide="ruler"></i> Fit for tall drivers</h2>
+                <a href="/guides/tall-drivers" class="fit-compare-link">
+                    Read the guide <i data-lucide="arrow-right"></i>
+                </a>
+            </div>
+            <div class="fit-cols">
+                ${col(pair[0], names[0])}
+                ${col(pair[1], names[1])}
+            </div>
+            ${verdict}
+            <p class="fit-compare-note">
+                Front headroom, inches. Manufacturers quote the figure without a
+                sunroof unless noted — assume roughly an inch less where glass is fitted.
+            </p>
+        </div>`;
     if (window.refreshIcons) window.refreshIcons();
 }
 

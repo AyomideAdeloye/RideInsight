@@ -1,0 +1,452 @@
+{
+  "_comment": [
+    "Single source of truth for Fit Guide measurements.",
+    "Read server-side by app.py (/guides) and client-side by static/fitData.js,",
+    "so a corrected figure only ever has to be changed here.",
+    "",
+    "headroom / headroomRoof: inches, without and with the glass roof.",
+    "headroomRoof is null when the manufacturer publishes only one number —",
+    "that is a missing figure, NOT a claim that the roof costs nothing.",
+    "",
+    "verified:false rows are filtered out of anything rendered publicly."
+  ],
+  "thresholds": {
+    "good": 40.0,
+    "ok": 38.5
+  },
+  "tiers": [
+    {
+      "key": "budget",
+      "label": "Under $15k",
+      "sub": "Used, high-mileage-friendly"
+    },
+    {
+      "key": "mid",
+      "label": "$15k–$45k",
+      "sub": "New mainstream, or lightly used"
+    },
+    {
+      "key": "premium",
+      "label": "$45k+",
+      "sub": "Luxury and full-size"
+    }
+  ],
+  "cars": [
+    {
+      "key": "honda_fit",
+      "make": "Honda",
+      "model": "Fit",
+      "years": "2015–2020",
+      "tier": "budget",
+      "body": "Hatchback",
+      "verified": true,
+      "specYear": 2020,
+      "headroom": 39.5,
+      "headroomRoof": null,
+      "legroom": 41.4,
+      "verdict": "pick",
+      "note": "The tall-driver cult classic, and the spec backs up the reputation. More head and legroom up front than a Golf, at half the price. Figures are for the final US model year — Honda stopped selling the Fit here after 2020, so this is a used-only pick.",
+      "community": "Does the seat drop low enough for a long torso?"
+    },
+    {
+      "key": "kia_soul",
+      "make": "Kia",
+      "model": "Soul",
+      "years": "2020–present",
+      "tier": "budget",
+      "body": "Boxy hatch",
+      "verified": true,
+      "specYear": 2025,
+      "headroom": 39.9,
+      "headroomRoof": null,
+      "legroom": 41.1,
+      "range": "38.3–39.9\" depending on trim",
+      "verdict": "watch",
+      "note": "The boxy shape is still the point — a vertical roofline puts the headroom where your head actually is. But the current car's figure is a range, not a number: 39.9\" on the best trim and 38.3\" on the worst, which is less than a Volkswagen Golf. That 1.6\" spread is trim roulette, and Kia does not make it obvious which is which. Sit in the exact car. The pre-2020 second-generation Soul measured 39.6\"/40.9\" if you are shopping used.",
+      "community": "Which trims land at 38.3\" and which at 39.9\"? Owners, this one is worth pinning down."
+    },
+    {
+      "key": "vw_golf",
+      "make": "Volkswagen",
+      "model": "Golf",
+      "years": "2015–2021",
+      "tier": "budget",
+      "body": "Hatchback",
+      "verified": true,
+      "specYear": 2017,
+      "headroom": 38.4,
+      "headroomRoof": null,
+      "legroom": null,
+      "verdict": "watch",
+      "note": "A benchmark rather than a recommendation. 38.4\" is tight at 6'4\", and that is the figure before a sunroof.",
+      "community": null
+    },
+    {
+      "key": "bronco_sport",
+      "make": "Ford",
+      "model": "Bronco Sport",
+      "years": "2021–present",
+      "tier": "mid",
+      "body": "Compact SUV",
+      "verified": true,
+      "specYear": 2025,
+      "headroom": 41.5,
+      "headroomRoof": null,
+      "legroom": 42.4,
+      "verdict": "pick",
+      "note": "The best headroom figure in this guide, luxury SUVs included — in a car that costs a third of an Audi Q8 with four more inches of ceiling. The 2025 update was equipment and suspension only, so the cabin figures carry over.",
+      "community": "Confirm the figure holds on trims fitted with the moonroof — Ford does not publish a separate number."
+    },
+    {
+      "key": "subaru_outback",
+      "make": "Subaru",
+      "model": "Outback",
+      "years": "2020–present",
+      "tier": "mid",
+      "body": "Wagon / crossover",
+      "verified": true,
+      "specYear": 2025,
+      "headroom": 40.1,
+      "headroomRoof": 39.1,
+      "legroom": 42.8,
+      "verdict": "pick",
+      "note": "The most honest car here, because Subaru publishes both numbers. Skip the moonroof and it is one of the best options at any price.",
+      "community": null
+    },
+    {
+      "key": "vw_atlas",
+      "make": "Volkswagen",
+      "model": "Atlas",
+      "years": "2018–present",
+      "tier": "mid",
+      "body": "3-row SUV",
+      "verified": true,
+      "specYear": 2025,
+      "headroom": 41.3,
+      "headroomRoof": 40.1,
+      "legroom": 41.7,
+      "verdict": "pick",
+      "note": "Beats the Pilot on both measurements and gives up almost nothing to the Bronco Sport. Volkswagen is the second manufacturer here to publish both roof figures, and the penalty is 1.2\" — even bigger than Subaru's. Still clears 40\" with the sunroof fitted, which is why it stays a pick either way.",
+      "community": null
+    },
+    {
+      "key": "honda_pilot",
+      "make": "Honda",
+      "model": "Pilot",
+      "years": "2023–present",
+      "tier": "mid",
+      "body": "3-row SUV",
+      "verified": true,
+      "specYear": 2025,
+      "headroom": 40.5,
+      "headroomRoof": null,
+      "legroom": 41.0,
+      "verdict": "ok",
+      "note": "Solid rather than exceptional — beaten on headroom by a Bronco Sport two sizes smaller. Vehicle size and driver fit are different things. The panoramic moonroof is optional and Honda does not publish a second figure, so treat 40.5\" as the roof-delete number.",
+      "community": "Panoramic moonroof owners: how much headroom does it actually cost?"
+    },
+    {
+      "key": "mazda3_hatch",
+      "make": "Mazda",
+      "model": "3 Hatchback",
+      "years": "2019–present",
+      "tier": "mid",
+      "body": "Hatchback",
+      "verified": true,
+      "specYear": 2026,
+      "headroom": 37.75,
+      "headroomRoof": null,
+      "legroom": 42.3,
+      "range": "37.5–38.0\" depending on trim",
+      "verdict": "avoid",
+      "note": "Great legroom, worst headroom of any mainstream car here. The sloping hatch roofline and low seat are why tall drivers keep reporting they do not fit — the spec confirms the complaint.",
+      "community": "Owners over 6'2\": is the seat height adjustable enough?"
+    },
+    {
+      "key": "tesla_model_x",
+      "make": "Tesla",
+      "model": "Model X",
+      "years": "2016–present",
+      "tier": "premium",
+      "body": "SUV",
+      "verified": true,
+      "specYear": 2025,
+      "headroom": 41.7,
+      "headroomRoof": null,
+      "legroom": 41.2,
+      "verdict": "pick",
+      "note": "The best headroom figure found anywhere in this research. The windscreen extends back over your head instead of a roof panel cutting into it — the one case where the glass helps.",
+      "community": null,
+      "aliases": [
+        "Model X Plaid"
+      ]
+    },
+    {
+      "key": "bmw_x5",
+      "make": "BMW",
+      "model": "X5",
+      "years": "2019–present",
+      "tier": "premium",
+      "body": "SUV",
+      "verified": true,
+      "specYear": 2025,
+      "headroom": 40.7,
+      "headroomRoof": null,
+      "legroom": 39.8,
+      "verdict": "ok",
+      "note": "Good ceiling, but 39.8\" of legroom is the shortest figure in this guide — less than a Honda Fit. The panoramic roof is standard, so there is no roof-delete trim to fall back on.",
+      "community": "Does the seat rail run out before your legs do?",
+      "aliases": [
+        "X5 M",
+        "xDrive40i",
+        "X5 xDrive40i"
+      ]
+    },
+    {
+      "key": "mercedes_eclass",
+      "make": "Mercedes-Benz",
+      "model": "E-Class",
+      "years": "2021–present",
+      "tier": "premium",
+      "body": "Sedan",
+      "verified": true,
+      "specYear": 2023,
+      "headroom": 37.3,
+      "headroomRoof": null,
+      "legroom": null,
+      "verdict": "avoid",
+      "note": "More than two inches worse than a used Honda Fit, at six times the price. The exact trap this guide exists to flag.",
+      "community": null
+    },
+    {
+      "key": "audi_q8",
+      "make": "Audi",
+      "model": "Q8",
+      "years": "2019–present",
+      "tier": "premium",
+      "body": "Coupe SUV",
+      "verified": true,
+      "specYear": 2022,
+      "headroom": 37.1,
+      "headroomRoof": null,
+      "legroom": 41.6,
+      "verdict": "avoid",
+      "note": "The worst headroom figure in the dataset, at nearly the highest price. Sloping coupe roofline plus a standard panoramic sunroof. Second-row headroom (38.1\") is better than the front, which tells you everything.",
+      "community": null
+    },
+    {
+      "key": "honda_crv_2015",
+      "make": "Honda",
+      "model": "CR-V",
+      "years": "2015–2016",
+      "tier": "budget",
+      "body": "Compact SUV",
+      "verified": true,
+      "specYear": 2015,
+      "headroom": 40.1,
+      "headroomRoof": null,
+      "legroom": 41.3,
+      "verdict": "pick",
+      "note": "Clears 40\" with room to spare and pairs it with 41.3\" of legroom — the most balanced cheap option here. The figure is for the non-moonroof car; the EX adds one, so check the trim.",
+      "community": "EX owners with the moonroof: how much ceiling do you actually lose?",
+      "aliases": [
+        "CR V"
+      ]
+    },
+    {
+      "key": "prius_gen2",
+      "make": "Toyota",
+      "model": "Prius (Gen 2)",
+      "years": "2004–2009",
+      "tier": "budget",
+      "body": "Liftback",
+      "verified": true,
+      "specYear": 2006,
+      "headroom": 39.1,
+      "headroomRoof": null,
+      "legroom": 41.9,
+      "note": "Better than its reputation — the tall greenhouse and upright screen buy back what the shape looks like it should cost. 41.9\" of legroom beats a Kia Soul by a full inch. It is a twenty-year-old car, so judge it on price, not on fit.",
+      "community": null,
+      "aliases": [
+        "Prius"
+      ]
+    },
+    {
+      "key": "bmw_3series",
+      "make": "BMW",
+      "model": "3 Series",
+      "years": "2019–present",
+      "tier": "mid",
+      "body": "Sedan",
+      "verified": true,
+      "specYear": 2025,
+      "headroom": 38.7,
+      "headroomRoof": null,
+      "legroom": 42.0,
+      "verdict": "watch",
+      "note": "Worth knowing that the current G20 lost 1.6\" of headroom against the F30 it replaced — 38.7\" now versus 40.3\" then. Legroom is excellent at 42.0\", so this is a car that fits your legs and not your head. Every guide still quoting the old figure is recommending a car that no longer exists.",
+      "community": "G20 owners over 6'2\": does the sunroof car still work?",
+      "aliases": [
+        "330i",
+        "330i xDrive",
+        "320i",
+        "340i",
+        "M340i"
+      ]
+    },
+    {
+      "key": "kia_k4_sedan",
+      "make": "Kia",
+      "model": "K4 Sedan",
+      "years": "2025–present",
+      "tier": "mid",
+      "body": "Sedan",
+      "verified": true,
+      "specYear": 2025,
+      "headroom": 39.0,
+      "headroomRoof": null,
+      "legroom": 42.3,
+      "note": "Comfortably out-rooms a BMW 3 Series on both measurements for roughly half the money. Note this is the sedan — the hatchback is a different roofline and needs its own figure.",
+      "community": null,
+      "aliases": [
+        "K4"
+      ]
+    },
+    {
+      "key": "kia_k4_hatch",
+      "make": "Kia",
+      "model": "K4 Hatchback",
+      "years": "2025–present",
+      "tier": "mid",
+      "body": "Hatchback",
+      "verified": false,
+      "headroom": null,
+      "headroomRoof": null,
+      "legroom": null,
+      "todo": "Sedan figures found (39.0\"/42.3\") but the hatch has a different roofline, and on the Mazda 3 that swap costs about an inch and a half. Do not inherit the sedan number — pull the hatch's own spec once Kia publishes it."
+    },
+    {
+      "key": "land_cruiser",
+      "make": "Toyota",
+      "model": "Land Cruiser",
+      "years": "2024–present",
+      "tier": "premium",
+      "body": "Body-on-frame SUV",
+      "verified": false,
+      "headroom": null,
+      "headroomRoof": null,
+      "legroom": null,
+      "todo": "Sources conflict badly. Edmunds-derived listings give 36.1\" headroom and 33\" front legroom, which would make it the worst car in this guide; other listings give 39.3–40.1\" headroom for the 2025. 33\" front legroom is not plausible for a full-size SUV, so at least one figure is a bad parse. Edmunds' own review does say it has 'a lot less legroom than you'd expect', so the low reading may not be pure noise. Needs Toyota's own spec sheet before it goes in either column."
+    }
+  ],
+  "sources": [
+    {
+      "label": "iSeeCars — best cars for tall people",
+      "url": "https://www.iseecars.com/tall-people-cars"
+    },
+    {
+      "label": "U.S. News — best cars for tall people",
+      "url": "https://cars.usnews.com/cars-trucks/advice/best-cars-for-tall-people"
+    },
+    {
+      "label": "Kelley Blue Book — best cars for tall people",
+      "url": "https://www.kbb.com/best-cars/tall-people"
+    },
+    {
+      "label": "Subaru Outback dimensions (moonroof headroom split)",
+      "url": "https://www.elkgrovesubaru.com/2025-subaru-outback-dimensions"
+    },
+    {
+      "label": "Ford Bronco Sport vs Subaru Outback",
+      "url": "https://www.truecar.com/compare/ford-bronco-sport-vs-subaru-outback/"
+    },
+    {
+      "label": "VW Atlas vs Honda Pilot",
+      "url": "https://cars.usnews.com/cars-trucks/advice/volkswagen-atlas-vs-honda-pilot"
+    },
+    {
+      "label": "Audi Q8 vs BMW X5",
+      "url": "https://www.truecar.com/compare/audi-q8-vs-bmw-x5/"
+    },
+    {
+      "label": "Audi Q8 interior dimensions",
+      "url": "https://cars.usnews.com/cars-trucks/audi/q8/2022/interior"
+    },
+    {
+      "label": "Tesla Model X dimensions",
+      "url": "https://www.iseecars.com/car/tesla-model-x-dimensions"
+    },
+    {
+      "label": "Mazda3 hatchback dimensions",
+      "url": "https://www.glakesmazda.com/mazda-research/mazda3-hatchback-dimensions/"
+    },
+    {
+      "label": "Mercedes-Benz E-Class interior",
+      "url": "https://www.mbwhiteplains.com/mercedes-benz-research/mercedes-benz-e-class-interior/"
+    },
+    {
+      "label": "Honda Fit headroom",
+      "url": "https://www.autopadre.com/headroom/honda-fit"
+    },
+    {
+      "label": "Volkswagen Golf headroom",
+      "url": "https://www.autopadre.com/headroom/volkswagen-golf"
+    },
+    {
+      "label": "2025 BMW 330i specs (G20)",
+      "url": "https://www.edmunds.com/bmw/3-series/2025/st-402035560/features-specs/"
+    },
+    {
+      "label": "BMW 330i headroom by year",
+      "url": "https://www.autopadre.com/headroom/bmw-330i"
+    },
+    {
+      "label": "2015 Honda CR-V interior dimensions",
+      "url": "https://www.fisherhonda.com/modelfeature/2015-honda-cr-v-interior-dimensions/"
+    },
+    {
+      "label": "2015 Honda CR-V specifications (Honda News)",
+      "url": "https://hondanews.com/en-US/honda-automobiles/releases/release-d45ae5802b7845b0bae05db35bc0cc45-2015-cr-v-specifications-features"
+    },
+    {
+      "label": "2006 Toyota Prius dimensions",
+      "url": "https://www.iseecars.com/car/2006-toyota-prius-dimensions"
+    },
+    {
+      "label": "2025 Kia K4 specs (Kia USA)",
+      "url": "https://www.kia.com/us/en/vehicles/k4/2025/specs"
+    },
+    {
+      "label": "2025 Ford Bronco Sport specs",
+      "url": "https://www.edmunds.com/ford/bronco-sport/2025/features-specs/"
+    },
+    {
+      "label": "2025 VW Atlas dimensions (sunroof headroom split)",
+      "url": "https://www.elkgrovevw.com/2025-volkswagen-atlas-dimensions/"
+    },
+    {
+      "label": "2025 Honda Pilot interior dimensions",
+      "url": "https://www.mainlinehonda.com/honda-research/pilot-interior/"
+    },
+    {
+      "label": "2025 BMW X5 specs",
+      "url": "https://www.edmunds.com/bmw/x5/2025/features-specs/"
+    },
+    {
+      "label": "2025 Tesla Model X dimensions",
+      "url": "https://www.iseecars.com/car/2025-tesla-model_x-dimensions"
+    },
+    {
+      "label": "2025 Kia Soul specs",
+      "url": "https://www.edmunds.com/kia/soul/2025/features-specs/"
+    },
+    {
+      "label": "Kia Soul headroom by year",
+      "url": "https://www.autopadre.com/headroom/kia-soul"
+    },
+    {
+      "label": "2020 Honda Fit dimensions",
+      "url": "https://www.iseecars.com/car/honda-fit-dimensions"
+    }
+  ]
+}

@@ -237,3 +237,49 @@ async function saveSocials() {
         showMsg("socialsMsg", "Could not save", true);
     }
 }
+
+// ─── Blocked accounts ────────────────────────────────────────────
+// Blocking hides someone everywhere, including their profile page — so
+// without this list a block can never be undone. Loaded lazily, since most
+// people never open the Privacy tab.
+async function loadBlocked() {
+    const host = document.getElementById("blockedList");
+    if (!host) return;
+    try {
+        const res  = await fetch("/api/blocked");
+        const list = await res.json();
+        if (!Array.isArray(list) || !list.length) {
+            host.innerHTML = `<p class="blocked-empty">You haven't blocked anyone.</p>`;
+            return;
+        }
+        host.innerHTML = list.map(u => {
+            const name = String(u.username || "").replace(/[<>&"]/g, "");
+            return `
+            <div class="blocked-row" id="blocked-${name}">
+                <div class="blocked-who">
+                    ${u.avatar
+                        ? `<img src="${u.avatar}" class="blocked-avatar" alt="">`
+                        : `<div class="blocked-avatar blocked-avatar-letter">${(name[0]||"?").toUpperCase()}</div>`}
+                    <span>@${name}</span>
+                </div>
+                <button class="btn btn-ghost" onclick="unblock('${name}')">Unblock</button>
+            </div>`;
+        }).join("");
+    } catch (e) {
+        host.innerHTML = `<p class="blocked-empty">Could not load blocked accounts.</p>`;
+    }
+}
+
+async function unblock(username) {
+    if (!confirm(`Unblock @${username}? You'll see their posts again.`)) return;
+    const res  = await fetch(`/api/unblock/${encodeURIComponent(username)}`, { method: "POST" });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+        document.getElementById(`blocked-${username}`)?.remove();
+        if (!document.querySelector(".blocked-row")) loadBlocked();
+    } else {
+        alert(data.error || "Could not unblock.");
+    }
+}
+
+document.addEventListener("DOMContentLoaded", loadBlocked);

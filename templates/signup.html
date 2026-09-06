@@ -3,6 +3,9 @@
 <div class="auth-container">
     <h2>Create Account</h2>
     {% if error %}<div class="auth-error">{{ error }}</div>{% endif %}
+    {% if turnstile_key %}
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+    {% endif %}
     <form method="POST" autocomplete="off">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
@@ -27,6 +30,12 @@
             <input name="secondary_car" placeholder="Secondary car (e.g. 2020 Honda CBR600RR)" autocomplete="off">
         </div>
 
+        {# Renders only once TURNSTILE_SITE_KEY is set, so local dev is
+           unaffected. The widget posts cf-turnstile-response with the form. #}
+        {% if turnstile_key %}
+        <div class="cf-turnstile" data-sitekey="{{ turnstile_key }}"
+             data-theme="auto" style="margin: 12px 0;"></div>
+        {% endif %}
         <button type="submit">Create Account</button>
     </form>
     <p>Already have an account? <a href="/login">Login</a></p>

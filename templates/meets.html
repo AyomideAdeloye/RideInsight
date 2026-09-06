@@ -62,7 +62,10 @@
 let _allMeets = [];
 let _activeFilter = 'upcoming';
 const _loggedIn = {{ 'true' if session.get('username') else 'false' }};
-const _myUsername = {{ ('"' + session.get('username') + '"') | safe if session.get('username') else 'null' }};
+{# |tojson escapes quotes, backslashes and </script> correctly. Building the
+   quotes by hand meant a username containing a quote broke out of the string
+   and into executable script. #}
+const _myUsername = {{ session.get('username')|tojson }};
 
 async function loadMeets() {
     const res  = await fetch('/api/meets');

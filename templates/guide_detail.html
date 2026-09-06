@@ -1,0 +1,203 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="guide-page">
+
+    <a class="guide-back" href="{{ url_for('guides_index') }}">
+        <i data-lucide="arrow-left"></i> All guides
+    </a>
+
+    <div class="guide-header">
+        <h2>{{ meta.title }}</h2>
+        <div class="guide-meta">
+            {% if meta.audience %}<span><i data-lucide="users"></i> {{ meta.audience }}</span>{% endif %}
+            {% if meta.updated %}<span><i data-lucide="calendar"></i> Updated {{ meta.updated }}</span>{% endif %}
+        </div>
+    </div>
+
+    <div class="guide-body">{{ intro_html | safe }}</div>
+
+    {# ── Seat-height layout: grouped by inseam band, not ranked. A low seat
+         is right for one rider and wrong for another, so nothing here is
+         scored good or bad. ── #}
+    {% if bands %}
+    {% for band in bands %}
+    <div class="guide-tier">
+        <div class="guide-tier-head">
+            <h3>{{ band.label }}</h3>
+            <span class="guide-tier-sub">{{ band.sub }}</span>
+        </div>
+        <div class="fit-table-wrap">
+        <table class="fit-table">
+            <thead>
+                <tr>
+                    <th>Bike</th>
+                    <th>Seat height</th>
+                    <th>Type</th>
+                    <th>Weight</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for b in band.bikes %}
+                <tr>
+                    <td><div class="fit-car">{{ b.make }} {{ b.model }}</div></td>
+                    <td class="fit-num">
+                        {{ b.seatHeightIn }}"
+                        <div class="fit-car-sub">{{ b.seatHeightMm }} mm</div>
+                    </td>
+                    <td><span class="bike-type">{{ b.type }}</span></td>
+                    <td class="fit-num">
+                        {%- if b.weightKg %}{{ b.weightKg | round | int }} kg{% else %}&mdash;{% endif -%}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        </div>
+    </div>
+    {% endfor %}
+
+    {% if coverage and coverage.measured < coverage.total %}
+    <div class="guide-pending">
+        <h3><i data-lucide="search"></i> Coverage</h3>
+        <p class="guide-pending-sub">
+            {{ coverage.measured }} of {{ coverage.total }} bikes in the database
+            have a recorded seat height. The rest are left out rather than
+            estimated — if you know a figure for a bike that's missing, that's
+            the quickest way to improve this guide.
+        </p>
+    </div>
+    {% endif %}
+    {% endif %}
+
+    {# ── Ranked table: the whole point is seeing a $30k Bronco Sport above a
+         $75k Q8, so this one is deliberately not split by price. ── #}
+    {% if ranked %}
+    <div class="guide-rank">
+        <h3>Every car, ranked by front headroom</h3>
+        <div class="fit-bars">
+            {% set best = ranked[0].headroom %}
+            {% for c in ranked %}
+            <div class="fit-bar-row fit-{{ c.verdictKey }}">
+                <div class="fit-bar-label">{{ c.make }} {{ c.model }}</div>
+                <div class="fit-bar-track">
+                    {# Scale from 36" so differences are visible — a 37" to 42"
+                       spread is invisible on a bar that starts at zero. #}
+                    <div class="fit-bar-fill"
+                         style="width: {{ (((c.headroom - 36) / (best - 36)) * 100) | round(1) }}%"></div>
+                </div>
+                <div class="fit-bar-num">{{ c.headroom }}"</div>
+            </div>
+            {% endfor %}
+        </div>
+        <p class="fit-scale-note">Bars scaled from 36" to show the spread. Front headroom, inches.</p>
+    </div>
+    {% endif %}
+
+    {# ── Per-tier detail ── #}
+    {% for tier in tiers %}
+    <div class="guide-tier">
+        <div class="guide-tier-head">
+            <h3>{{ tier.label }}</h3>
+            <span class="guide-tier-sub">{{ tier.sub }}</span>
+        </div>
+
+        <div class="fit-table-wrap">
+        <table class="fit-table">
+            <thead>
+                <tr>
+                    <th>Car</th>
+                    <th>Headroom</th>
+                    <th>Legroom</th>
+                    <th>Verdict</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for c in tier.cars %}
+                <tr class="fit-{{ c.verdictKey }}">
+                    <td>
+                        <div class="fit-car">{{ c.make }} {{ c.model }}</div>
+                        <div class="fit-car-sub">{{ c.years }}{% if c.body %} · {{ c.body }}{% endif %}</div>
+                    </td>
+                    <td class="fit-num">
+                        {{ c.headroom }}"
+                        {% if c.headroomRoof %}
+                        <div class="fit-roof-warn" title="With the glass roof fitted">
+                            <i data-lucide="alert-triangle"></i> {{ c.headroomRoof }}" with roof
+                        </div>
+                        {% endif %}
+                        {% if c.range %}<div class="fit-car-sub">{{ c.range }}</div>{% endif %}
+                    </td>
+                    <td class="fit-num">{% if c.legroom %}{{ c.legroom }}"{% else %}&mdash;{% endif %}</td>
+                    <td>
+                        <span class="fit-pill fit-pill-{{ c.verdictKey }}">
+                            {%- if c.verdictKey == 'pick' -%}Fits
+                            {%- elif c.verdictKey == 'ok' -%}Workable
+                            {%- elif c.verdictKey == 'watch' -%}Tight
+                            {%- elif c.verdictKey == 'avoid' -%}Avoid
+                            {%- else -%}Unverified{%- endif -%}
+                        </span>
+                    </td>
+                </tr>
+                {% if c.note %}
+                <tr class="fit-note-row fit-{{ c.verdictKey }}">
+                    <td colspan="4">
+                        <p class="fit-note">{{ c.note }}</p>
+                        {% if c.community %}
+                        <p class="fit-community">
+                            <i data-lucide="message-circle"></i>
+                            <strong>Open question:</strong> {{ c.community }}
+                        </p>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endif %}
+                {% endfor %}
+            </tbody>
+        </table>
+        </div>
+    </div>
+    {% endfor %}
+
+    <div class="guide-body">{{ outro_html | safe }}</div>
+
+    {# ── Unverified rows. Shown as open research, never as advice — a wrong
+         recommendation is the one thing that kills trust in a guide. ── #}
+    {% if pending %}
+    <div class="guide-pending">
+        <h3><i data-lucide="search"></i> Still being researched</h3>
+        <p class="guide-pending-sub">
+            No verified figures yet, so these are deliberately left out of the
+            tables above rather than guessed at.
+        </p>
+        <ul>
+            {% for c in pending %}
+            <li>
+                <strong>{{ c.make }} {{ c.model }}</strong>
+                <span class="fit-car-sub">{{ c.years }}</span>
+                {% if c.todo %}<div class="fit-note">{{ c.todo }}</div>{% endif %}
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
+    {% if sources %}
+    <details class="guide-sources">
+        <summary>Sources ({{ sources | length }})</summary>
+        <ul>
+            {% for s in sources %}
+            <li><a href="{{ s.url }}" target="_blank" rel="noopener noreferrer">{{ s.label }}</a></li>
+            {% endfor %}
+        </ul>
+    </details>
+    {% endif %}
+
+    <div class="guide-cta">
+        <p>Comparing two of these? Put them head to head with running costs.</p>
+        <a class="guide-cta-btn" href="{{ url_for('compare') }}">
+            <i data-lucide="scale"></i> Open Compare
+        </a>
+    </div>
+
+</div>
+{% endblock %}

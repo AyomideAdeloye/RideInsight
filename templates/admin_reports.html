@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="legal-page admin-photos-page">
+
+    <div class="legal-header">
+        <h2><i data-lucide="flag"></i> Reports</h2>
+        <p class="legal-updated">
+            {{ counts.open }} open · {{ counts.actioned }} actioned ·
+            {{ counts.dismissed }} dismissed
+        </p>
+    </div>
+
+    <div class="report-tabs">
+        {% for s in ["open", "actioned", "dismissed"] %}
+        <a href="{{ url_for('admin_reports', status=s) }}"
+           class="report-tab {% if status == s %}active{% endif %}">
+            {{ s|capitalize }} ({{ counts[s] }})
+        </a>
+        {% endfor %}
+    </div>
+
+    {% if not reports %}
+        <div class="legal-body">
+            <p style="margin:0;">Nothing here. Reports from users land in this queue.</p>
+        </div>
+    {% else %}
+        <div class="report-list">
+        {% for r in reports %}
+            <div class="report-card" id="report-{{ r.id }}">
+                <div class="report-head">
+                    <span class="report-type">{{ r.target_type }}</span>
+                    <span class="report-when">{{ r.created_at }}</span>
+                </div>
+
+                <p class="report-line">
+                    <strong>@{{ r.reported_username }}</strong>
+                    reported by <a href="/profile/{{ r.reporter }}">@{{ r.reporter }}</a>
+                </p>
+
+                {% if r.reason %}
+                <p class="report-reason"><strong>Reason:</strong> {{ r.reason }}</p>
+                {% endif %}
+
+                {# The reported content inline, so a decision doesn't require
+                   hunting for the post first. #}
+                {% if r.content %}
+                <blockquote class="report-content">{{ r.content }}</blockquote>
+                {% endif %}
+
+                {% if status == "open" %}
+                <div class="review-actions">
+                    {% if r.target_id and r.target_type in ["post", "comment"] %}
+                    <button class="btn btn-danger"
+                            onclick="reviewReport({{ r.id }}, 'delete_content')">
+                        <i data-lucide="trash-2"></i> Delete {{ r.target_type }}
+                    </button>
+                    {% endif %}
+                    <button class="btn btn-primary" onclick="reviewReport({{ r.id }}, 'actioned')">
+                        <i data-lucide="check"></i> Mark actioned
+                    </button>
+                    <button class="btn" onclick="reviewReport({{ r.id }}, 'dismissed')">
+                        <i data-lucide="x"></i> Dismiss
+                    </button>
+                </div>
+                {% else %}
+                <p class="report-meta">
+                    {{ r.status }}{% if r.reviewed_at %} · {{ r.reviewed_at }}{% endif %}
+                </p>
+                {% endif %}
+            </div>
+        {% endfor %}
+        </div>
+    {% endif %}
+</div>
+
+<script>
+async function reviewReport(id, action) {
+    if (action === 'delete_content' &&
+        !confirm('Delete this content permanently?')) return;
+    const res = await fetch(`/api/admin/reports/${id}/${action}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+    });
+    if (res.ok) {
+        const card = document.getElementById('report-' + id);
+        if (card) card.remove();
+    } else {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || 'Something went wrong.');
+    }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="guides-page">
+
+    <div class="guides-header">
+        <h2><i data-lucide="ruler"></i> Fit Guides</h2>
+        <p class="guides-sub">
+            Short, data-backed answers to "what car actually fits me?" —
+            built from published spec sheets rather than forum anecdote.
+        </p>
+    </div>
+
+    {% if guides %}
+    <div class="guide-list">
+        {% for g in guides %}
+        <a class="guide-card" href="{{ url_for('guide_detail', slug=g.slug) }}">
+            <div class="guide-card-icon"><i data-lucide="{{ g.icon or 'book-open' }}"></i></div>
+            <div class="guide-card-body">
+                <h3>{{ g.title }}</h3>
+                {% if g.blurb %}<p class="guide-card-blurb">{{ g.blurb }}</p>{% endif %}
+                <div class="guide-card-meta">
+                    {% if g.audience %}<span><i data-lucide="users"></i> {{ g.audience }}</span>{% endif %}
+                    {% if g.updated %}<span><i data-lucide="calendar"></i> {{ g.updated }}</span>{% endif %}
+                </div>
+            </div>
+            <i data-lucide="chevron-right" class="guide-card-arrow"></i>
+        </a>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="guide-empty">
+        <i data-lucide="book-open"></i>
+        <p>No guides published yet.</p>
+    </div>
+    {% endif %}
+
+</div>
+{% endblock %}

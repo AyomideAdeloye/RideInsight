@@ -4,7 +4,7 @@
 
     <div class="race-header">
         <h2><i data-lucide="zap"></i> Drag Race</h2>
-        <p class="builder-subtitle">Quarter mile, your saved builds — specs determine your performance</p>
+        <p class="builder-subtitle">Your saved builds — specs determine your performance</p>
     </div>
 
     <div class="race-layout">
@@ -63,6 +63,20 @@
                 </div>
             </div>
 
+            <!-- Distance. A quarter mile ends almost immediately; longer runs
+                 let top speed and power-to-weight decide it, not just launch. -->
+            <div class="race-distance">
+                <span class="race-distance-label">Distance</span>
+                <div class="race-distance-opts">
+                    <button class="dist-opt" data-dist="quarter"
+                            onclick="setRaceDistance('quarter')">1/4 mile</button>
+                    <button class="dist-opt active" data-dist="half"
+                            onclick="setRaceDistance('half')">1/2 mile</button>
+                    <button class="dist-opt" data-dist="mile"
+                            onclick="setRaceDistance('mile')">1 mile</button>
+                </div>
+            </div>
+
             <!-- Race Button -->
             <button class="race-start-btn" id="raceStartBtn" onclick="startRace()" disabled>
                 <i data-lucide="flag-triangle-right"></i> Start Race
@@ -113,13 +127,19 @@
                 </div>
 
                 <!-- Touch controls (mobile) -->
+                {# Nitro sits on the LEFT, under the other thumb. Next to the
+                   accelerator it was being hit by accident mid-launch, and
+                   nitro is a limited resource — a mis-tap wastes it. Gas and
+                   brake stay together on the right where they're related. #}
                 <div class="race-touch-controls" id="raceTouchControls" style="display:none;">
+                    <div class="rtc-left">
+                        <button class="rtc-btn rtc-nitro" data-key=" " aria-label="Nitro">
+                            <i data-lucide="flame"></i>
+                        </button>
+                    </div>
                     <div class="rtc-right">
                         <button class="rtc-btn rtc-brake" data-key="s" aria-label="Brake">
                             <i data-lucide="chevron-down"></i>
-                        </button>
-                        <button class="rtc-btn rtc-nitro" data-key=" " aria-label="Nitro">
-                            <i data-lucide="flame"></i>
                         </button>
                         <button class="rtc-btn rtc-gas" data-key="w" aria-label="Accelerate">
                             <i data-lucide="chevron-up"></i>

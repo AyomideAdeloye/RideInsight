@@ -168,8 +168,11 @@ function loadSprite(key, src) {
     return img;
 }
 
-const PLAYER_SPRITE = loadSprite("player", "/static/uploads/car_player.png");
-const OPP_SPRITE    = loadSprite("opp",    "/static/uploads/car_opp.png");
+// These are shipped app assets, not user uploads. They used to live in
+// static/uploads/, which is gitignored — so they were never committed and
+// would have 404'd in production. static/sprites/ is tracked.
+const PLAYER_SPRITE = loadSprite("player", "/static/sprites/car_player.png");
+const OPP_SPRITE    = loadSprite("opp",    "/static/sprites/car_opp.png");
 
 function drawSportsCar(ctx, x, y, angle, color, nitroActive, scale = 1.0, isPlayer = true) {
     const img = isPlayer ? PLAYER_SPRITE : OPP_SPRITE;
@@ -221,10 +224,36 @@ function shadeColor(hex, pct) {
 // ─── Drag Race Engine ─────────────────────────────────────────────
 let drag = {};
 
+// Selectable race distances, in metres.
+const RACE_DISTANCES = [
+    { key: "quarter", label: "1/4 mile", metres: 402 },
+    { key: "half",    label: "1/2 mile", metres: 805 },
+    { key: "mile",    label: "1 mile",   metres: 1609 },
+];
+// Half mile by default: the quarter is over almost before the run starts,
+// which is what makes the track feel short.
+let RACE_DISTANCE = 805;
+
+function raceDistanceLabel() {
+    const d = RACE_DISTANCES.find(x => x.metres === RACE_DISTANCE);
+    return d ? `${d.label} (${d.metres}m)` : `${RACE_DISTANCE}m`;
+}
+
+function setRaceDistance(key) {
+    const found = RACE_DISTANCES.find(d => d.key === key);
+    if (!found) return;
+    RACE_DISTANCE = found.metres;
+    document.querySelectorAll(".dist-opt").forEach(b =>
+        b.classList.toggle("active", b.dataset.dist === key));
+}
+
 function initDrag(pBuild, oBuild) {
     const pStats = calcStats(pBuild);
     const oStats = calcStats(oBuild);
-    const TRACK  = 400; // metres (quarter mile)
+    // Race distance. A quarter mile is the drag standard, but it's over in a
+    // few seconds — longer races let power-to-weight and top speed matter
+    // rather than just launch, so the build choices show up more.
+    const TRACK = RACE_DISTANCE;
 
     drag = {
         track:   TRACK,
@@ -435,7 +464,9 @@ function showDragResults() {
         "Your time":   p.finished ? p.time.toFixed(3) + "s" : "DNF",
         "Opp time":    o.finished ? o.time.toFixed(3) + "s" : "DNF",
         "Top speed":   Math.round(Math.max(...Array.from({length:10}, () => drag.player.vel) ) * 200) + " mph",
-        "Distance":    "¼ mile (400m)",
+        // Was hardcoded to a quarter mile, so a one-mile run still reported
+        // "¼ mile" on the results screen.
+        "Distance":    raceDistanceLabel(),
     });
 }
 

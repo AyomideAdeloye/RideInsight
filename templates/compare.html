@@ -187,5 +187,7 @@
 
 {% block scripts %}
 <script src="{{ url_for('static', filename='vehicleData.js') }}"></script>
+<!-- Must load before compare.js: renderFitSection() calls into it. -->
+<script src="{{ url_for('static', filename='fitData.js') }}"></script>
 <script src="{{ url_for('static', filename='compare.js') }}"></script>
 {% endblock %}

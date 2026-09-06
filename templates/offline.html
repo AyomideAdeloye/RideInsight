@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="offline-page">
+    <i data-lucide="wifi-off"></i>
+    <h2>You're offline</h2>
+    <p>
+        RideInsight needs a connection for feeds, builds and comparisons.
+        Reconnect and try again.
+    </p>
+    <button class="offline-retry" onclick="location.reload()">
+        <i data-lucide="refresh-cw"></i> Retry
+    </button>
+</div>
+{% endblock %}

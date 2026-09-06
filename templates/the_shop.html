@@ -243,8 +243,23 @@ function closeCreateListing() { document.getElementById("createListingModal").st
 
 function detectLocation() {
     const status = document.getElementById("locationStatus");
+
+    // Geolocation is gated to secure contexts. Over plain http on a LAN
+    // address the API is missing entirely, and the optional-chaining call
+    // below would simply do nothing — leaving "Detecting…" on screen forever
+    // with no explanation. Say what's wrong instead.
+    if (!window.isSecureContext) {
+        status.textContent = "Location needs a secure (https) connection — type it in below.";
+        document.getElementById("listLocation")?.focus();
+        return;
+    }
+    if (!navigator.geolocation) {
+        status.textContent = "This browser can't detect location — type it in below.";
+        return;
+    }
+
     status.textContent = "Detecting…";
-    navigator.geolocation?.getCurrentPosition(pos => {
+    navigator.geolocation.getCurrentPosition(pos => {
         _userLat = pos.coords.latitude;
         _userLng = pos.coords.longitude;
         document.getElementById("listLat").value = _userLat;
@@ -259,7 +274,22 @@ function detectLocation() {
                 document.getElementById("listLocation").value = loc;
                 status.textContent = `📍 ${loc}`;
             }).catch(() => { status.textContent = "Location detected"; });
-    }, () => { status.textContent = "Could not detect location"; });
+    }, err => {
+        // Distinguish "you said no" from "it didn't work" — otherwise people
+        // retry a permission they already denied.
+        const msg = {
+            1: "Location permission denied — type it in below.",
+            2: "Location unavailable right now — type it in below.",
+            3: "Location timed out — type it in below.",
+        }[err && err.code] || "Could not detect location — type it in below.";
+        status.textContent = msg;
+    }, {
+        // Without a timeout this can hang indefinitely on a phone that never
+        // resolves a fix, leaving the button looking broken.
+        enableHighAccuracy: false,
+        timeout: 10000,
+        maximumAge: 300000,
+    });
 }
 
 document.getElementById("listImages")?.addEventListener("change", function() {

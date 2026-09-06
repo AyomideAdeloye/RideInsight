@@ -1,5 +1,6 @@
 import os
 import re
+import json
 import uuid
 import sqlite3
 import requests
@@ -7,12 +8,21 @@ import bleach
 from datetime import datetime
 from dotenv import load_dotenv
 
-from flask import Flask, render_template, request, jsonify, session, redirect, url_for
+from flask import (Flask, render_template, request, jsonify, session,
+                   redirect, url_for, send_from_directory)
 from flask_wtf.csrf import CSRFProtect
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
+# Flask 3 dropped its re-export of escape; markupsafe is still a Flask dependency.
+from markupsafe import escape
+# Every third-party spec lookup goes through here, so the provider can be
+# swapped or dropped without touching the routes. See providers.py.
+import providers
+# Per-user daily quotas and the global spend circuit breaker. Rate limits cap
+# speed; these cap total consumption, which is what protects the bill.
+import limits
 
 load_dotenv()
 
@@ -42,9 +52,15 @@ app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["SESSION_COOKIE_SECURE"] = IS_PROD
 app.config["PERMANENT_SESSION_LIFETIME"] = 86400 * 7  # 7 days
 
-UPLOAD_FOLDER = "static/uploads"
+# Both the database and user uploads have to live on the mounted persistent
+# disk in production, or every redeploy wipes them. Locally the defaults keep
+# everything in the project folder exactly as before.
+UPLOAD_FOLDER = os.getenv("UPLOAD_FOLDER", "static/uploads")
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
-app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024  # 100 MB for video
+# 25 MB, not 100. At 100 MB a 10 GB disk is only ~100 videos, and a full disk
+# stops SQLite writing — a full-app outage, not just failed uploads. Most phone
+# clips fit comfortably under 25 MB.
+app.config["MAX_CONTENT_LENGTH"] = 25 * 1024 * 1024
 ALLOWED_EXTENSIONS       = {"png", "jpg", "jpeg", "gif", "webp"}
 ALLOWED_VIDEO_EXTENSIONS = {"mp4", "mov", "webm"}
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -52,14 +68,35 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 # ─── Security extensions ────────────────────────────────────────
 csrf = CSRFProtect(app)
 
+def _rate_key():
+    """Rate limit per account when signed in, per IP otherwise.
+
+    Keying purely on IP punishes everyone behind one NAT — a university campus
+    or an office looks like a single very busy visitor. Keying on the user id
+    where we have one keeps the limit attached to the actor rather than the
+    building.
+    """
+    uid = session.get("user_id")
+    return f"user:{uid}" if uid else f"ip:{get_remote_address()}"
+
+
 limiter = Limiter(
-    key_func=get_remote_address,
+    key_func=_rate_key,
     app=app,
-    default_limits=[],
-    storage_uri="memory://"
+    # Previously empty, so 161 of 166 routes had no limit whatsoever. These are
+    # a backstop that a normal session never reaches; anything genuinely
+    # expensive gets its own stricter decorator below.
+    default_limits=["1000 per hour", "60 per minute"],
+    storage_uri=os.getenv("RATELIMIT_STORAGE_URI", "memory://"),
+    strategy="fixed-window",
 )
 
-DB_NAME = "rideinsight.db"
+# NOTE: memory:// storage is per-process, so counters reset on restart and are
+# not shared between workers. That is acceptable at one worker (see the
+# Procfile) but the moment a second is added, set RATELIMIT_STORAGE_URI to a
+# Redis URL or each worker will enforce its own separate allowance.
+
+DB_NAME = os.getenv("DB_PATH", "rideinsight.db")
 
 # ─── Badge Definitions ───────────────────────────────────────────
 BADGES = {
@@ -341,6 +378,49 @@ def inject_globals():
 ALLOWED_TAGS = []  # strip all HTML from user text
 ALLOWED_ATTRS = {}
 
+# ─── CAPTCHA (Cloudflare Turnstile) ──────────────────────────────
+# Turnstile rather than reCAPTCHA: free with no request ceiling, usually
+# invisible to real users, and no data sharing with an ad network. The site
+# key is public by design; the secret is not.
+#
+# Both unset means the check is skipped, so local development needs no keys.
+# It refuses to be skipped in production — an unconfigured CAPTCHA that
+# silently passes everything is worse than none, because you believe you have
+# one.
+TURNSTILE_SITE_KEY = os.getenv("TURNSTILE_SITE_KEY", "")
+TURNSTILE_SECRET   = os.getenv("TURNSTILE_SECRET", "")
+TURNSTILE_VERIFY   = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
+
+
+def verify_captcha():
+    """Returns (ok, message). Fails closed in production."""
+    if not TURNSTILE_SECRET:
+        if IS_PROD:
+            app.logger.error("TURNSTILE_SECRET is not set — refusing signups.")
+            return False, "Sign-ups are temporarily unavailable. Please try later."
+        return True, ""          # local dev
+
+    token = request.form.get("cf-turnstile-response", "")
+    if not token:
+        return False, "Please complete the human verification check."
+
+    try:
+        resp = requests.post(TURNSTILE_VERIFY, timeout=8, data={
+            "secret":   TURNSTILE_SECRET,
+            "response": token,
+            "remoteip": get_remote_address(),
+        })
+        data = resp.json()
+    except (requests.RequestException, ValueError) as exc:
+        # Cloudflare being unreachable shouldn't hand the door to bots.
+        app.logger.warning("Turnstile verification failed: %s", exc)
+        return False, "Could not complete verification. Please try again."
+
+    if not data.get("success"):
+        return False, "Verification failed. Please try again."
+    return True, ""
+
+
 def sanitize(text):
     """Strip all HTML tags from user-supplied text."""
     if not text:
@@ -353,8 +433,21 @@ def allowed_file(filename):
 def allowed_video(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_VIDEO_EXTENSIONS
 
+class StorageQuotaExceeded(Exception):
+    """Raised when a user has filled their share of the disk."""
+
+    def __init__(self, payload):
+        super().__init__(payload.get("detail", "Storage limit reached"))
+        self.payload = payload
+
+
 def save_upload(file_field):
-    """Save an uploaded file and return its URL path, or empty string."""
+    """Save an uploaded file and return its URL path, or empty string.
+
+    Raises StorageQuotaExceeded when the account is out of space. MAX_CONTENT_
+    LENGTH caps a single upload; this caps the running total, which is what
+    actually protects a shared 10 GB disk from one enthusiastic user.
+    """
     if file_field not in request.files:
         return ""
     f = request.files[file_field]
@@ -363,6 +456,21 @@ def save_upload(file_field):
     checker = allowed_video if file_field == "video" else allowed_file
     if not checker(f.filename):
         return ""
+
+    uid = session.get("user_id")
+    if uid:
+        # Size without reading the file into memory.
+        f.seek(0, os.SEEK_END)
+        incoming = f.tell()
+        f.seek(0)
+        conn = get_db_connection()
+        try:
+            denied = limits.check_storage(conn, uid, app.config["UPLOAD_FOLDER"],
+                                          incoming)
+        finally:
+            conn.close()
+        if denied:
+            raise StorageQuotaExceeded(denied[0])
     # Make every upload unique. Keeping the original name meant two users
     # uploading "IMG_1234.jpg" — or any two cropped covers, which are all
     # named cover.jpg — would silently overwrite each other's file.
@@ -371,11 +479,234 @@ def save_upload(file_field):
     filename = f"{stem[:40]}_{uuid.uuid4().hex[:12]}{ext.lower()}"
     path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
     f.save(path)
-    return "/" + path.replace("\\", "/")
+    # Return a stable /uploads/ URL rather than the filesystem path. In
+    # production UPLOAD_FOLDER sits on the mounted disk, outside static/,
+    # where Flask's static handler cannot reach it — so the path and the URL
+    # can no longer be the same string. served by uploaded_file() below.
+    return "/uploads/" + filename
+
+# Every column that can point at a file we host. delete_upload() consults this
+# before removing anything, so a file still in use is never deleted. Add new
+# upload-bearing columns here or they will not be protected.
+UPLOAD_REFERENCE_COLUMNS = [
+    ("users",            ["avatar", "cover_photo"]),
+    ("posts",            ["image", "video_url"]),
+    ("club_posts",       ["image", "video_url"]),
+    ("clubs",            ["banner", "avatar"]),
+    ("garage",           ["image"]),
+    ("builds",           ["thumbnail"]),
+    ("meets",            ["image"]),
+    ("stories",          ["image"]),
+    ("vehicle_photos",   ["image"]),
+    ("generated_models", ["glb_url", "thumbnail_url"]),
+]
+
+
+def _still_referenced(conn, filename):
+    """Is any surviving row still pointing at this file?
+
+    Uploads used to be saved under their original name, so two people — or one
+    person twice — uploading "cover.jpg" wrote to the same file on disk. Those
+    older rows share a physical file, which means deleting one row's image
+    silently destroys another's. Newer uploads carry a uuid and can't collide,
+    but the old ones are still out there.
+
+    Matching on the filename (rather than the full stored path) also covers the
+    legacy "/static/uploads/x.jpg" form and the current "/uploads/x.jpg" both
+    pointing at the same thing.
+    """
+    like = f"%{filename}"
+    for table, cols in UPLOAD_REFERENCE_COLUMNS:
+        for col in cols:
+            try:
+                hit = conn.execute(
+                    f"SELECT 1 FROM {table} WHERE {col} LIKE ? LIMIT 1", (like,)
+                ).fetchone()
+            except sqlite3.Error:
+                continue        # table or column absent
+            if hit:
+                return True
+    # listings.images is a JSON array of paths.
+    try:
+        hit = conn.execute(
+            "SELECT 1 FROM listings WHERE images LIKE ? LIMIT 1", (like,)
+        ).fetchone()
+        if hit:
+            return True
+    except sqlite3.Error:
+        pass
+    return False
+
+
+def delete_upload(*urls):
+    """Delete uploaded files given the URLs stored in the database.
+
+    Called wherever a row holding an upload is removed. Without this, deleting
+    a post left its image on disk forever — still publicly fetchable by anyone
+    who had the URL — and the privacy policy's promise that deleting an account
+    removes its content was not actually true.
+
+    Safe against three things it will genuinely encounter:
+
+      * External URLs. gif_url and link_image point at Klipy and at scraped
+        link previews, not at our disk. Anything with a scheme is skipped.
+      * Path traversal. Only the basename is used, and the resolved path must
+        still sit inside UPLOAD_FOLDER, so a crafted value like
+        "../../app.py" cannot escape.
+      * Files that are already gone. Deletion is best-effort; a missing file
+        or a permissions error must never take down the request that is
+        deleting the row.
+    """
+    base = os.path.abspath(app.config["UPLOAD_FOLDER"])
+    candidates = []
+    for url in urls:
+        if not url or not isinstance(url, str):
+            continue
+        if url.startswith(("http://", "https://", "//", "data:")):
+            continue
+        name = os.path.basename(url.split("?")[0].strip())
+        if not name or name in (".", ".."):
+            continue
+        path = os.path.abspath(os.path.join(base, name))
+        if os.path.commonpath([base, path]) != base:
+            app.logger.warning("delete_upload refused suspicious path: %r", url)
+            continue
+        candidates.append((name, path))
+
+    if not candidates:
+        return 0
+
+    # Callers delete their rows first, then call this — so anything still
+    # referencing the file belongs to a different row that is keeping it alive.
+    removed = 0
+    conn = get_db_connection()
+    try:
+        for name, path in candidates:
+            if _still_referenced(conn, name):
+                app.logger.info("Kept %s — still referenced elsewhere", name)
+                continue
+            try:
+                if os.path.isfile(path):
+                    os.remove(path)
+                    removed += 1
+            except OSError as exc:
+                app.logger.warning("Could not delete %s: %s", path, exc)
+    finally:
+        conn.close()
+    return removed
+
+
+@app.after_request
+def security_headers(response):
+    """Baseline security headers — there were none before.
+
+    CSP note: the app uses inline onclick handlers and inline <script> blocks
+    throughout, so 'unsafe-inline' is unavoidable without a large refactor.
+    The policy is still worth setting: it pins *where* scripts, styles, images
+    and connections may come from, which blocks the injection of a remote
+    payload even if markup escaping is bypassed somewhere.
+
+    frame-ancestors 'none' is the modern clickjacking defence; X-Frame-Options
+    is kept alongside it for older browsers.
+    """
+    csp = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' "
+        "https://unpkg.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net "
+        "https://challenges.cloudflare.com; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "font-src 'self' https://fonts.gstatic.com data:; "
+        # Uploads, remote vehicle photography and generated thumbnails.
+        "img-src 'self' data: blob: https:; "
+        "media-src 'self' blob: https:; "
+        "connect-src 'self' https:; "
+        "frame-src https://challenges.cloudflare.com; "
+        "object-src 'none'; "
+        "base-uri 'self'; "
+        "form-action 'self'; "
+        "frame-ancestors 'none'"
+    )
+    response.headers.setdefault("Content-Security-Policy", csp)
+    # Stops the browser guessing a content type — an uploaded file that sniffs
+    # as HTML would otherwise execute in our origin.
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault(
+        "Permissions-Policy",
+        "geolocation=(self), camera=(self), microphone=(), payment=(), usb=()")
+    if IS_PROD:
+        # A year, and only in production — sending this over local http would
+        # pin the browser to https for a host that doesn't serve it.
+        response.headers.setdefault(
+            "Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+    return response
+
+
+@app.errorhandler(StorageQuotaExceeded)
+def handle_storage_quota(exc):
+    """One handler so every upload route reports the quota the same way."""
+    return jsonify(exc.payload), 429
+
+
+@app.errorhandler(429)
+def handle_rate_limited(exc):
+    """Rate limits should read as a clear message, not a generic error page."""
+    if request.path.startswith("/api/") or request.is_json:
+        return jsonify({
+            "error": "Too many requests",
+            "detail": "You're going a bit fast. Wait a moment and try again.",
+        }), 429
+    return render_template("error.html",
+                           message="You're going a bit fast — "
+                                   "wait a moment and try again."), 429
+
+
+@app.errorhandler(413)
+def handle_too_large(exc):
+    """MAX_CONTENT_LENGTH rejects the request before any view runs."""
+    mb = app.config["MAX_CONTENT_LENGTH"] // (1024 * 1024)
+    return jsonify({
+        "error": "File too large",
+        "detail": f"Uploads are limited to {mb} MB.",
+    }), 413
+
+
+@app.route("/uploads/<path:filename>")
+def uploaded_file(filename):
+    """Serve user uploads from wherever UPLOAD_FOLDER points.
+
+    Needed because in production that folder is on the mounted disk rather
+    than inside static/. send_from_directory resolves the path safely and
+    rejects traversal attempts, so a crafted filename cannot escape the
+    directory.
+
+    Legacy /static/uploads/... URLs stored in older rows still resolve locally,
+    where the folder really is under static/.
+    """
+    return send_from_directory(app.config["UPLOAD_FOLDER"], filename)
+
 
 def get_db_connection():
-    conn = sqlite3.connect(DB_NAME)
+    # gunicorn runs 2 workers x 4 threads, so up to 8 connections share this
+    # one file. On SQLite's defaults a second writer doesn't queue — it fails
+    # immediately with "database is locked", which in production looks like a
+    # random 500 whenever two people post at the same moment.
+    #
+    #   timeout      wait for a held lock instead of giving up instantly
+    #   journal_mode=WAL   readers no longer block the writer, and vice versa
+    #   busy_timeout       same wait applied inside SQLite itself
+    #   synchronous=NORMAL safe under WAL and much faster than FULL
+    #
+    # WAL needs a real local filesystem. If this ever moves to a network mount
+    # the journal mode must be reconsidered — that is a good moment to move to
+    # Postgres instead.
+    conn = sqlite3.connect(DB_NAME, timeout=15)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=15000")
+    conn.execute("PRAGMA synchronous=NORMAL")
+    conn.execute("PRAGMA foreign_keys=ON")
     return conn
 
 def add_notification(conn, user_id, text, link=""):
@@ -886,6 +1217,52 @@ def init_db():
     except Exception:
         pass
 
+    # Usage quotas — persisted so they survive a restart, unlike the
+    # in-memory rate limiter.
+    limits.init_quota_tables(conn)
+    limits.prune_old_usage(conn)
+
+    # ── User safety ───────────────────────────────────────────────
+    # These were previously created lazily inside the block/report routes,
+    # which meant any query reading them failed until someone had blocked or
+    # reported for the first time. Creating them up front lets the feed filter
+    # on blocks from the very first request.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS blocks (
+            blocker_id INTEGER,
+            blocked_id INTEGER,
+            created_at TEXT DEFAULT '',
+            PRIMARY KEY (blocker_id, blocked_id)
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_blocks_blocked ON blocks (blocked_id)")
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS reports (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            reporter_id INTEGER,
+            reported_username TEXT DEFAULT '',
+            target_type TEXT DEFAULT 'user',   -- user | post | comment
+            target_id INTEGER,
+            reason TEXT DEFAULT '',
+            status TEXT DEFAULT 'open',        -- open | actioned | dismissed
+            reviewed_by INTEGER,
+            reviewed_at TEXT DEFAULT '',
+            created_at TEXT DEFAULT ''
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_reports_status ON reports (status)")
+    # Older databases had a reports table without these columns.
+    for col, ddl in (("target_type", "TEXT DEFAULT 'user'"),
+                     ("target_id", "INTEGER"),
+                     ("status", "TEXT DEFAULT 'open'"),
+                     ("reviewed_by", "INTEGER"),
+                     ("reviewed_at", "TEXT DEFAULT ''")):
+        try:
+            conn.execute(f"ALTER TABLE reports ADD COLUMN {col} {ddl}")
+        except Exception:
+            pass
+
     # Drafts: unposted composer content
     conn.execute("""
         CREATE TABLE IF NOT EXISTS drafts (
@@ -1002,6 +1379,13 @@ def get_posts():
             LEFT JOIN users u ON u.username = p.username
             ORDER BY p.id DESC
         """, (uid, uid)).fetchall()
+
+    # Blocking is only real if it's enforced on read. Filtering here rather
+    # than in each query keeps one definition of "blocked" for the feed and
+    # the search results both.
+    hidden = blocked_usernames(conn, uid)
+    if hidden:
+        rows = [r for r in rows if (r["username"] or "").lower() not in hidden]
     conn.close()
 
     import json as _json_posts
@@ -1057,7 +1441,7 @@ def get_posts():
     conn2.close()
     return jsonify(result)
 
-@csrf.exempt
+@limiter.limit("30 per hour")
 @app.route("/add_post", methods=["POST"])
 def add_post():
     if "user_id" not in session:
@@ -1110,7 +1494,6 @@ def add_post():
     conn.close()
     return jsonify({"message": "Post added"})
 
-@csrf.exempt
 @app.route("/api/vote_poll/<int:post_id>", methods=["POST"])
 def vote_poll(post_id):
     if "user_id" not in session:
@@ -1158,7 +1541,6 @@ def vote_poll(post_id):
     conn.close()
     return jsonify({"vote_counts": counts, "total_votes": total, "user_vote": option_index})
 
-@csrf.exempt
 @app.route("/like_post/<int:post_id>", methods=["POST"])
 def like_post(post_id):
     if "user_id" not in session:
@@ -1199,7 +1581,6 @@ def like_post(post_id):
     conn.close()
     return jsonify({"message": "Post liked", "liked": True})
 
-@csrf.exempt
 @app.route("/dislike_post/<int:post_id>", methods=["POST"])
 def dislike_post(post_id):
     if "user_id" not in session:
@@ -1225,6 +1606,44 @@ def dislike_post(post_id):
     conn.commit()
     conn.close()
     return jsonify({"message": "Post disliked", "disliked": True})
+
+@app.route("/delete_post/<int:post_id>", methods=["POST"])
+def delete_post(post_id):
+    """Delete your own post.
+
+    This route did not exist, so users could not remove their own posts at all
+    — while the privacy policy told them they could edit or delete posts at any
+    time. Moderators reach the same behaviour through the reports queue.
+    """
+    if "user_id" not in session:
+        return jsonify({"error": "Not logged in"}), 401
+
+    conn = get_db_connection()
+    post = conn.execute("SELECT username, image, video_url FROM posts WHERE id=?",
+                        (post_id,)).fetchone()
+    if not post:
+        conn.close()
+        return jsonify({"error": "Post not found"}), 404
+
+    # Posts are keyed by username rather than user_id.
+    if (post["username"] or "").lower() != (session.get("username") or "").lower():
+        conn.close()
+        return jsonify({"error": "Not authorized"}), 403
+
+    for table, col in (("comments", "post_id"), ("likes", "post_id"),
+                       ("dislikes", "post_id"), ("saved_posts", "post_id"),
+                       ("poll_votes", "post_id")):
+        try:
+            conn.execute(f"DELETE FROM {table} WHERE {col}=?", (post_id,))
+        except sqlite3.Error:
+            pass
+    conn.execute("DELETE FROM posts WHERE id=?", (post_id,))
+    conn.commit()
+    conn.close()
+
+    delete_upload(post["image"], post["video_url"])
+    return jsonify({"message": "Post deleted"})
+
 
 @app.route("/get_post_counts/<int:post_id>")
 def get_post_counts(post_id):
@@ -1268,8 +1687,10 @@ def get_comments(post_id):
         WHERE c.post_id = ? AND c.parent_id IS NULL
         ORDER BY c.id ASC
     """, (uid, uid, post_id)).fetchall()
+    hidden = blocked_usernames(conn, uid)
     conn.close()
-    return jsonify([dict(r) for r in rows])
+    return jsonify([dict(r) for r in rows
+                    if (r["username"] or "").lower() not in hidden])
 
 @app.route("/get_replies/<int:comment_id>")
 def get_replies(comment_id):
@@ -1287,8 +1708,12 @@ def get_replies(comment_id):
         WHERE c.parent_id = ?
         ORDER BY c.id ASC
     """, (uid, uid, comment_id)).fetchall()
+    # Replies are fetched by their own endpoint, so filtering get_comments()
+    # alone left a blocked user's replies visible one tap deeper.
+    hidden = blocked_usernames(conn, uid)
     conn.close()
-    return jsonify([dict(r) for r in rows])
+    return jsonify([dict(r) for r in rows
+                    if (r["username"] or "").lower() not in hidden])
 
 @app.route("/get_comment_counts/<int:comment_id>")
 def get_comment_counts(comment_id):
@@ -1307,7 +1732,6 @@ def get_comment_counts(comment_id):
         return jsonify({"likes": 0, "dislikes": 0, "user_liked": 0, "user_disliked": 0})
     return jsonify(dict(row))
 
-@csrf.exempt
 @app.route("/like_comment/<int:comment_id>", methods=["POST"])
 def like_comment(comment_id):
     if "user_id" not in session:
@@ -1329,7 +1753,6 @@ def like_comment(comment_id):
     conn.commit(); conn.close()
     return jsonify({"liked": True})
 
-@csrf.exempt
 @app.route("/dislike_comment/<int:comment_id>", methods=["POST"])
 def dislike_comment(comment_id):
     if "user_id" not in session:
@@ -1351,7 +1774,7 @@ def dislike_comment(comment_id):
     conn.commit(); conn.close()
     return jsonify({"disliked": True})
 
-@csrf.exempt
+@limiter.limit("100 per hour")
 @app.route("/add_comment", methods=["POST"])
 def add_comment():
     if "user_id" not in session:
@@ -1424,7 +1847,9 @@ def explore():
         LIMIT 50
     """, params).fetchall()
     conn.close()
-    return jsonify([{**dict(r), "time": time_ago(r["created_at"])} for r in rows])
+    hidden = blocked_usernames(conn, session.get("user_id"))
+    return jsonify([{**dict(r), "time": time_ago(r["created_at"])} for r in rows
+                    if (r["username"] or "").lower() not in hidden])
 
 @app.route("/api/trending_hashtags")
 def trending_hashtags():
@@ -1508,7 +1933,6 @@ def get_garage():
     conn.close()
     return jsonify([dict(c) for c in cars])
 
-@csrf.exempt
 @app.route("/add_car", methods=["POST"])
 def add_car():
     if "user_id" not in session:
@@ -1540,7 +1964,6 @@ def get_mods(car_id):
     conn.close()
     return jsonify([dict(m) for m in mods])
 
-@csrf.exempt
 @app.route("/add_mod", methods=["POST"])
 def add_mod():
     if "user_id" not in session:
@@ -1570,6 +1993,7 @@ def add_mod():
 def compare():
     return render_template("compare.html")
 
+@limiter.limit("120 per hour")
 @app.route("/api/vehicle_image")
 def vehicle_image():
     vtype = sanitize(request.args.get("type", "car"))
@@ -1699,91 +2123,25 @@ def vehicle_image():
 
     return jsonify({"url": "", "source": "none"})
 
+@limiter.limit("120 per hour")
 @app.route("/api/search_motorcycle")
 def search_motorcycle():
     make  = sanitize(request.args.get("make", ""))
     model = sanitize(request.args.get("model", ""))
     year  = sanitize(request.args.get("year", ""))
-    api_key = os.getenv("API_NINJAS_KEY")
-    params = {"make": make, "model": model}
-    if year: params["year"] = year
-    resp = requests.get(
-        "https://api.api-ninjas.com/v1/motorcycles",
-        headers={"X-Api-Key": api_key},
-        params=params,
-        timeout=8
-    )
-    if resp.status_code != 200:
-        return jsonify({"error": "Motorcycle API failed", "status": resp.status_code}), 500
-    return jsonify(resp.json())
+    # The frontend merges this with the local motoData entry, which is the
+    # more accurate of the two wherever they disagree. An empty list here is
+    # a normal outcome, not an error — it just means the local data stands.
+    return jsonify(providers.fetch_moto_specs(make, model, year))
 
+@limiter.limit("120 per hour")
 @app.route("/api/search_vehicle")
 def search_vehicle():
     make  = sanitize(request.args.get("make", ""))
     model = sanitize(request.args.get("model", ""))
     year  = sanitize(request.args.get("year", ""))
-    api_key = os.getenv("API_NINJAS_KEY")
+    return jsonify(providers.fetch_car_specs(make, model, year))
 
-    # Build a list of (make, model) attempts from most to least specific
-    def clean_make(m):
-        return m.lower().replace("-", " ").replace("  ", " ").strip()
-
-    def model_variants(m):
-        """Return progressively simpler model strings to try."""
-        m = m.lower().strip()
-        variants = [m]
-        # Remove hyphens: "c-class" -> "c class"
-        no_hyphen = m.replace("-", " ").strip()
-        if no_hyphen != m:
-            variants.append(no_hyphen)
-        # First word only: "c class" -> "c", "3 series" -> "3"
-        first_word = m.split()[0] if m else ""
-        if first_word and first_word not in variants:
-            variants.append(first_word)
-        # First two words: "a4 quattro" -> "a4"
-        words = m.split()
-        if len(words) >= 2:
-            two = " ".join(words[:2])
-            if two not in variants:
-                variants.append(two)
-        return variants
-
-    api_make = clean_make(make)
-    attempts = []
-    for mv in model_variants(model):
-        attempts.append((api_make, mv, year))    # with year
-        attempts.append((api_make, mv, ""))       # without year
-
-    for att_make, att_model, att_year in attempts:
-        params = {"make": att_make, "model": att_model}
-        if att_year:
-            params["year"] = att_year
-        resp = requests.get(
-            "https://api.api-ninjas.com/v1/cars",
-            headers={"X-Api-Key": api_key},
-            params=params,
-            timeout=8
-        )
-        if resp.status_code == 200:
-            data = resp.json()
-            if not data:
-                continue
-            # Verify at least one result's model shares a meaningful word with the search
-            search_words = set(
-                w for w in model.lower().replace("-", " ").split()
-                if len(w) > 1 and w not in ("the", "and", "for")
-            )
-            verified = [
-                car for car in data
-                if any(w in (car.get("model") or "").lower() for w in search_words)
-            ] if search_words else data
-
-            if verified:
-                return jsonify(verified)
-
-    return jsonify([])
-
-@csrf.exempt
 @app.route("/save_comparison", methods=["POST"])
 def save_comparison():
     if "user_id" not in session:
@@ -1810,7 +2168,7 @@ def saved():
 # These are required before launch and again by the app stores later.
 # Content lives here rather than in templates so the three pages share one
 # layout and the "last updated" dates stay in one place.
-LEGAL_UPDATED = "29 August 2026"
+LEGAL_UPDATED = "6 September 2026"
 SUPPORT_EMAIL = "rideinsightapp@gmail.com"
 
 @app.route("/support")
@@ -1878,11 +2236,40 @@ def privacy():
     </ul>
 
     <h3>Third parties</h3>
-    <p>Vehicle specifications are retrieved from third-party data providers.
-    Those requests contain the vehicle you searched for, not your identity.
-    Some parts in the builder link to external retailers; those links may be
+    <p>RideInsight uses the following outside services. Where a request is sent
+    on your behalf it contains the vehicle you searched for, not your identity,
+    unless stated otherwise.</p>
+    <ul>
+      <li><strong>API Ninjas</strong> and <strong>NHTSA vPIC</strong> —
+          vehicle specifications and model lists.</li>
+      <li><strong>FuelEconomy.gov</strong> (US Dept. of Energy) — fuel economy
+          figures, where used.</li>
+      <li><strong>Tripo3D</strong> — generates 3D vehicle models. See
+          "AI features" below.</li>
+      <li><strong>Unsplash</strong> — stock vehicle photography.</li>
+      <li><strong>Klipy</strong> — the GIF picker. Searching for a GIF sends
+          your search term to Klipy.</li>
+      <li><strong>GNews</strong> — automotive news headlines.</li>
+      <li><strong>Web3Forms</strong> — receives waitlist sign-ups from the
+          marketing site, including the email address you enter.</li>
+      <li><strong>Render</strong> — hosts the application and stores its
+          database and uploaded files.</li>
+      <li><strong>Cloudflare</strong> — serves the marketing site.</li>
+    </ul>
+    <p>Some parts in the builder link to external retailers; those links may be
     affiliate links, meaning RideInsight may earn a commission at no extra cost
     to you. Once you follow a link, that retailer's own privacy policy applies.</p>
+
+    <h3>AI features</h3>
+    <p>RideInsight uses a third-party AI service, <strong>Tripo3D</strong>, to
+    generate 3D models of vehicles for the builder. Depending on the vehicle,
+    this is done either from a text description (the year, make and model) or
+    by sending a vehicle photograph to Tripo3D for conversion into a 3D model.
+    Generated models are stored so the same vehicle does not have to be
+    generated twice.</p>
+    <p>These are the only AI features in RideInsight. There is no chatbot or
+    assistant, and your posts, comments, messages and personal information are
+    not sent to any AI service and are not used to train AI models.</p>
 
     <h3>Cookies</h3>
     <p>We use a session cookie to keep you signed in and to remember your theme
@@ -1891,8 +2278,13 @@ def privacy():
     <h3>Your control</h3>
     <ul>
       <li>Edit or delete your posts, builds and garage entries at any time.</li>
-      <li>Delete your account from Settings. This removes your account and its
-          associated content and cannot be undone.</li>
+      <li>Delete your account from Settings. This permanently removes your
+          account, posts, comments, builds, garage, listings and messages, and
+          deletes the photos and videos you uploaded from our storage. It
+          cannot be undone. Clubs you created are kept so their other members
+          don't lose them, with your name removed. Server logs and recent
+          backups may retain some data for a short period before they age
+          out.</li>
       <li>Email <a href="mailto:{SUPPORT_EMAIL}">{SUPPORT_EMAIL}</a> to request
           a copy of your data or ask a question about this policy.</li>
     </ul>
@@ -1906,6 +2298,11 @@ def privacy():
     <p>Passwords are hashed and requests are protected against cross-site
     request forgery. No service is perfectly secure, so please use a unique
     password here.</p>
+    <p>Please note that images and videos you upload are served from
+    unguessable public web addresses. That means anyone you share a link with
+    can view that file without signing in, so treat anything you upload as
+    public rather than private. When you delete the post or your account, the
+    file is deleted and the link stops working.</p>
 
     <h3>Changes</h3>
     <p>If this policy changes materially, the date at the top of this page will
@@ -1934,6 +2331,19 @@ def terms():
     illegal content, spam or malware; scrape the site or hammer it with
     automated requests; or attempt to access accounts that aren't yours.
     Accounts that do these things may be suspended or removed.</p>
+    <p><strong>There is no tolerance for objectionable content or abusive
+    behaviour on RideInsight.</strong> That includes harassment, hate speech,
+    threats, sexual content, content that exploits or endangers children, and
+    anything illegal.</p>
+
+    <h3>Reporting and moderation</h3>
+    <p>You can report any post, comment or account from the menu on it, and you
+    can block another user from their profile. Blocking hides that person's
+    posts and comments from you and stops them messaging you.</p>
+    <p>We review reports and aim to act on them within 24 hours. Content that
+    breaches these terms is removed, and accounts that post it may be suspended
+    or permanently removed without notice. If you believe we've got a decision
+    wrong, email <a href="mailto:{SUPPORT_EMAIL}">{SUPPORT_EMAIL}</a>.</p>
 
     <h3>Vehicle data and estimates</h3>
     <p>Specifications, valuations, running costs and performance figures shown
@@ -2024,7 +2434,6 @@ def get_vehicle_photos():
         out.append(d)
     return jsonify(out)
 
-@csrf.exempt
 @app.route("/api/vehicle_photos/submit", methods=["POST"])
 @limiter.limit("10 per hour")
 def submit_vehicle_photo():
@@ -2083,7 +2492,6 @@ def admin_photos():
     return render_template("admin_photos.html",
                            photos=[dict(r) for r in rows], approved_count=approved)
 
-@csrf.exempt
 @app.route("/api/admin/photos/<int:photo_id>/<action>", methods=["POST"])
 def review_vehicle_photo(photo_id, action):
     if action not in ("approve", "reject"):
@@ -2132,11 +2540,34 @@ def review_vehicle_photo(photo_id, action):
     return jsonify({"message": status})
 
 # ─── Landing page + waitlist ──────────────────────────────────────
+@app.route("/offline")
+def offline():
+    """Shown by the service worker when a navigation fails with no network."""
+    return render_template("offline.html")
+
+
+@app.route("/sw.js")
+def service_worker():
+    """Serve the worker from the site root.
+
+    A service worker can only control pages at or below its own path, so one
+    served from /static/sw.js could not intercept "/" — it has to be at the
+    root to cover the whole app.
+    """
+    response = send_from_directory("static", "sw.js")
+    response.headers["Content-Type"] = "application/javascript"
+    # Browsers cache the worker itself; a stale one would keep serving old
+    # assets long after a deploy.
+    response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
 @app.route("/welcome")
 def landing():
     return render_template("landing.html")
 
 @csrf.exempt
+@limiter.limit("10 per hour")
 @app.route("/api/waitlist", methods=["POST"])
 @limiter.limit("10 per hour")
 def api_waitlist():
@@ -2251,7 +2682,6 @@ def api_drafts():
     conn.close()
     return jsonify([dict(r) for r in rows])
 
-@csrf.exempt
 @app.route("/api/drafts/save", methods=["POST"])
 def api_draft_save():
     if "user_id" not in session:
@@ -2279,7 +2709,6 @@ def api_draft_save():
     conn.close()
     return jsonify({"message": "Draft saved"})
 
-@csrf.exempt
 @app.route("/api/drafts/<int:draft_id>/delete", methods=["POST"])
 def api_draft_delete(draft_id):
     if "user_id" not in session:
@@ -2295,7 +2724,6 @@ def api_draft_delete(draft_id):
     return jsonify({"message": "Deleted"})
 
 # ─── Social links ─────────────────────────────────────────────────
-@csrf.exempt
 @app.route("/settings/update_socials", methods=["POST"])
 def update_socials():
     if "user_id" not in session:
@@ -2328,7 +2756,6 @@ def get_comparisons():
     conn.close()
     return jsonify([dict(r) for r in rows])
 
-@csrf.exempt
 @app.route("/delete_comparison/<int:comp_id>", methods=["POST"])
 def delete_comparison(comp_id):
     if "user_id" not in session:
@@ -2348,6 +2775,14 @@ def delete_comparison(comp_id):
 @limiter.limit("10 per hour", methods=["POST"])
 def signup():
     if request.method == "POST":
+        # Bot check before anything else. Rate limits slow a scripted signup
+        # flood down; they don't stop it, and every fake account costs storage,
+        # quota and moderation attention.
+        ok, why = verify_captcha()
+        if not ok:
+            return render_template("signup.html", error=why,
+                                   turnstile_key=TURNSTILE_SITE_KEY)
+
         username      = sanitize(request.form.get("username", ""))
         email         = sanitize(request.form.get("email", ""))
         password      = request.form.get("password", "")
@@ -2355,11 +2790,22 @@ def signup():
         secondary_car = sanitize(request.form.get("secondary_car", "")).strip()
 
         if len(username) < 3:
-            return render_template("signup.html", error="Username must be at least 3 characters.")
+            return render_template("signup.html", error="Username must be at least 3 characters.", turnstile_key=TURNSTILE_SITE_KEY)
+        # Restrict the character set. sanitize() strips HTML tags but leaves
+        # quotes and semicolons intact, and usernames get rendered into
+        # JavaScript in a couple of templates — so a name like
+        #   "; alert(1); //
+        # could break out of the string it was placed in. Templates now use
+        # |tojson as well; this is the other half of that fix, and it also
+        # rules out lookalike and whitespace-padded names.
+        if len(username) > 30:
+            return render_template("signup.html", error="Username must be 30 characters or fewer.", turnstile_key=TURNSTILE_SITE_KEY)
+        if not re.fullmatch(r"[A-Za-z0-9_.\-]+", username):
+            return render_template("signup.html", error="Username can only contain letters, numbers, underscores, dots and hyphens.", turnstile_key=TURNSTILE_SITE_KEY)
         if "@" in username:
-            return render_template("signup.html", error="Username cannot be an email address — please choose a username like 'Aryoh_1'.")
+            return render_template("signup.html", error="Username cannot be an email address — please choose a username like 'Aryoh_1'.", turnstile_key=TURNSTILE_SITE_KEY)
         if len(password) < 8:
-            return render_template("signup.html", error="Password must be at least 8 characters.")
+            return render_template("signup.html", error="Password must be at least 8 characters.", turnstile_key=TURNSTILE_SITE_KEY)
         hashed = generate_password_hash(password)
         conn = get_db_connection()
         try:
@@ -2372,9 +2818,8 @@ def signup():
             return redirect("/login")
         except sqlite3.IntegrityError:
             conn.close()
-            return render_template("signup.html", error="Username or email already exists.")
-    return render_template("signup.html")
-    return render_template("signup.html")
+            return render_template("signup.html", error="Username or email already exists.", turnstile_key=TURNSTILE_SITE_KEY)
+    return render_template("signup.html", turnstile_key=TURNSTILE_SITE_KEY)
 
 @app.route("/login", methods=["GET", "POST"])
 @limiter.limit("20 per hour", methods=["POST"])
@@ -2386,6 +2831,10 @@ def login():
         user = conn.execute("SELECT * FROM users WHERE email=?", (email,)).fetchone()
         conn.close()
         if user and check_password_hash(user["password"], password):
+            session.permanent = True
+            # Clear first: anything an attacker managed to seed into the
+            # session before sign-in must not survive the privilege change.
+            session.clear()
             session.permanent = True
             session["user_id"]  = user["id"]
             session["username"] = user["username"]
@@ -2400,7 +2849,6 @@ def logout():
     return redirect("/")
 
 # Profile
-@csrf.exempt
 @app.route("/upload_avatar", methods=["POST"])
 def upload_avatar():
     if "user_id" not in session:
@@ -2415,18 +2863,20 @@ def upload_avatar():
     session["avatar"] = image_path
     return jsonify({"url": image_path})
 
-@csrf.exempt
 @app.route("/remove_cover", methods=["POST"])
 def remove_cover():
     if "user_id" not in session:
         return jsonify({"error": "Not logged in"}), 401
     conn = get_db_connection()
+    old = conn.execute("SELECT cover_photo FROM users WHERE id=?",
+                       (session["user_id"],)).fetchone()
     conn.execute("UPDATE users SET cover_photo='' WHERE id=?", (session["user_id"],))
     conn.commit()
     conn.close()
+    delete_upload(old["cover_photo"] if old else "")
     return jsonify({"message": "Cover removed"})
 
-@csrf.exempt
+@limiter.limit("20 per hour")
 @app.route("/upload_cover", methods=["POST"])
 def upload_cover():
     if "user_id" not in session:
@@ -2484,7 +2934,6 @@ def profile(username):
                            is_following=is_following,
                            is_own_profile=("user_id" in session and session["user_id"] == user["id"]))
 
-@csrf.exempt
 @app.route("/update_bio", methods=["POST"])
 def update_bio():
     if "user_id" not in session:
@@ -2496,7 +2945,47 @@ def update_bio():
     conn.close()
     return jsonify({"message": "Bio updated", "bio": bio})
 
-@csrf.exempt
+def blocked_usernames(conn, user_id):
+    """Usernames hidden from this user — blocks in either direction.
+
+    Blocking is mutual by design: if A blocks B, neither should be shown the
+    other's content. A one-way block still lets the blocked person follow and
+    reply to someone who wanted rid of them, which is the situation blocking
+    exists to end.
+
+    Returns a set of lowercase usernames. Posts and comments are keyed by
+    username rather than id, so comparison has to be name-based.
+    """
+    if not user_id:
+        return set()
+    try:
+        rows = conn.execute("""
+            SELECT u.username FROM blocks b
+            JOIN users u ON u.id = CASE
+                WHEN b.blocker_id = ? THEN b.blocked_id ELSE b.blocker_id END
+            WHERE b.blocker_id = ? OR b.blocked_id = ?
+        """, (user_id, user_id, user_id)).fetchall()
+    except sqlite3.Error:
+        return set()          # blocks table not created yet
+    return {r["username"].lower() for r in rows if r["username"]}
+
+
+def blocked_user_ids(conn, user_id):
+    """Same, as ids — for tables keyed by user_id rather than username."""
+    if not user_id:
+        return set()
+    try:
+        rows = conn.execute(
+            "SELECT blocker_id, blocked_id FROM blocks WHERE blocker_id=? OR blocked_id=?",
+            (user_id, user_id)).fetchall()
+    except sqlite3.Error:
+        return set()
+    out = set()
+    for r in rows:
+        out.add(r["blocked_id"] if r["blocker_id"] == user_id else r["blocker_id"])
+    return out
+
+
 @app.route("/api/block/<username>", methods=["POST"])
 def block_user(username):
     if "user_id" not in session:
@@ -2518,22 +3007,208 @@ def block_user(username):
     conn.close()
     return jsonify({"message": f"@{username} has been blocked."})
 
-@csrf.exempt
+@app.route("/api/blocked")
+def get_blocked():
+    """People you've blocked.
+
+    Blocking was one-way with no way back: nothing listed who you'd blocked,
+    and their content is hidden everywhere, so you couldn't reach their profile
+    to undo it either. That made every block permanent by accident.
+    """
+    if "user_id" not in session:
+        return jsonify([])
+    conn = get_db_connection()
+    rows = conn.execute("""
+        SELECT u.username, u.avatar, b.created_at
+        FROM blocks b JOIN users u ON u.id = b.blocked_id
+        WHERE b.blocker_id = ?
+        ORDER BY b.rowid DESC
+    """, (session["user_id"],)).fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
+
+
+@app.route("/api/unblock/<username>", methods=["POST"])
+def unblock_user(username):
+    if "user_id" not in session:
+        return jsonify({"error": "Not logged in"}), 401
+    conn = get_db_connection()
+    target = conn.execute("SELECT id FROM users WHERE username=? COLLATE NOCASE",
+                          (username,)).fetchone()
+    if not target:
+        conn.close()
+        return jsonify({"error": "User not found"}), 404
+    # Only remove the block this user created. A block placed on them by the
+    # other person is not theirs to lift.
+    conn.execute("DELETE FROM blocks WHERE blocker_id=? AND blocked_id=?",
+                 (session["user_id"], target["id"]))
+    conn.commit()
+    conn.close()
+    return jsonify({"message": f"@{username} has been unblocked."})
+
+
 @app.route("/api/report/<username>", methods=["POST"])
 def report_user(username):
     if "user_id" not in session:
         return jsonify({"error": "Not logged in"}), 401
-    reason = sanitize(request.json.get("reason", ""))[:500]
+    reason = sanitize((request.json or {}).get("reason", ""))[:500]
     conn = get_db_connection()
-    try:
-        conn.execute("CREATE TABLE IF NOT EXISTS reports (id INTEGER PRIMARY KEY AUTOINCREMENT, reporter_id INTEGER, reported_username TEXT, reason TEXT, created_at TEXT)")
-        conn.execute("INSERT INTO reports (reporter_id, reported_username, reason, created_at) VALUES (?,?,?,?)",
-                     (session["user_id"], username, reason, datetime.utcnow().strftime("%Y-%m-%d %H:%M")))
-        conn.commit()
-    except Exception:
-        pass
+    conn.execute("""INSERT INTO reports
+                    (reporter_id, reported_username, target_type, reason, status, created_at)
+                    VALUES (?,?,'user',?, 'open', ?)""",
+                 (session["user_id"], sanitize(username), reason,
+                  datetime.utcnow().strftime("%Y-%m-%d %H:%M")))
+    conn.commit()
     conn.close()
-    return jsonify({"message": "Report received."})
+    return jsonify({"message": "Report received. Thanks — we'll review it."})
+
+
+@limiter.limit("20 per hour")
+@app.route("/api/report_content", methods=["POST"])
+def report_content():
+    """Report a specific post or comment.
+
+    Reporting a whole account was the only option before, which is a blunt
+    instrument — and app reviewers specifically test reporting an individual
+    piece of content.
+    """
+    if "user_id" not in session:
+        return jsonify({"error": "Not logged in"}), 401
+    data = request.json or {}
+    target_type = (data.get("type") or "").lower()
+    if target_type not in ("post", "comment"):
+        return jsonify({"error": "Invalid report target"}), 400
+    try:
+        target_id = int(data.get("id", 0))
+    except (TypeError, ValueError):
+        return jsonify({"error": "Invalid id"}), 400
+    if not target_id:
+        return jsonify({"error": "Invalid id"}), 400
+
+    reason = sanitize(data.get("reason", ""))[:500]
+    conn = get_db_connection()
+    table = "posts" if target_type == "post" else "comments"
+    row = conn.execute(f"SELECT username FROM {table} WHERE id=?", (target_id,)).fetchone()
+    if not row:
+        conn.close()
+        return jsonify({"error": "Not found"}), 404
+
+    conn.execute("""INSERT INTO reports
+                    (reporter_id, reported_username, target_type, target_id,
+                     reason, status, created_at)
+                    VALUES (?,?,?,?,?, 'open', ?)""",
+                 (session["user_id"], row["username"], target_type, target_id,
+                  reason, datetime.utcnow().strftime("%Y-%m-%d %H:%M")))
+    conn.commit()
+    conn.close()
+    return jsonify({"message": "Report received. Thanks — we'll review it."})
+
+
+@app.route("/admin/reports")
+def admin_reports():
+    """Review queue for reported users and content.
+
+    Apple's UGC guideline requires not just a report button but somewhere the
+    reports actually go. Before this, they were written to a table no screen
+    ever read.
+    """
+    if "user_id" not in session:
+        return redirect(url_for("login"))
+    conn = get_db_connection()
+    if not is_admin_user(conn, session["user_id"]):
+        conn.close()
+        return render_template("error.html", message="Not authorised."), 403
+
+    status = request.args.get("status", "open")
+    if status not in ("open", "actioned", "dismissed"):
+        status = "open"
+    rows = conn.execute(
+        "SELECT * FROM reports WHERE status=? ORDER BY id DESC LIMIT 200", (status,)
+    ).fetchall()
+
+    reports = []
+    for r in rows:
+        d = dict(r)
+        # Pull the reported content inline so a moderator can judge it without
+        # hunting for the post.
+        d["content"] = ""
+        if d.get("target_type") in ("post", "comment") and d.get("target_id"):
+            table = "posts" if d["target_type"] == "post" else "comments"
+            try:
+                hit = conn.execute(
+                    f"SELECT body FROM {table} WHERE id=?", (d["target_id"],)
+                ).fetchone()
+                d["content"] = (hit["body"] or "") if hit else "[deleted]"
+            except sqlite3.Error:
+                pass
+        reporter = conn.execute("SELECT username FROM users WHERE id=?",
+                                (d.get("reporter_id"),)).fetchone()
+        d["reporter"] = reporter["username"] if reporter else "[deleted]"
+        reports.append(d)
+
+    counts = {s: conn.execute("SELECT COUNT(*) FROM reports WHERE status=?",
+                              (s,)).fetchone()[0]
+              for s in ("open", "actioned", "dismissed")}
+    conn.close()
+    return render_template("admin_reports.html", reports=reports,
+                           status=status, counts=counts)
+
+
+@app.route("/api/admin/reports/<int:report_id>/<action>", methods=["POST"])
+def review_report(report_id, action):
+    if "user_id" not in session:
+        return jsonify({"error": "Not logged in"}), 401
+    if action not in ("actioned", "dismissed", "delete_content"):
+        return jsonify({"error": "Unknown action"}), 400
+
+    conn = get_db_connection()
+    if not is_admin_user(conn, session["user_id"]):
+        conn.close()
+        return jsonify({"error": "Not authorised"}), 403
+
+    report = conn.execute("SELECT * FROM reports WHERE id=?", (report_id,)).fetchone()
+    if not report:
+        conn.close()
+        return jsonify({"error": "Not found"}), 404
+
+    if action == "delete_content" and report["target_id"]:
+        table = "posts" if report["target_type"] == "post" else "comments"
+        if report["target_type"] in ("post", "comment"):
+            if table == "posts":
+                # Reuse the same cleanup a normal delete does, so a moderated
+                # post doesn't leave its image on disk.
+                row = conn.execute("SELECT image, video_url FROM posts WHERE id=?",
+                                   (report["target_id"],)).fetchone()
+                conn.execute("DELETE FROM comments WHERE post_id=?", (report["target_id"],))
+                conn.execute("DELETE FROM posts WHERE id=?", (report["target_id"],))
+                if row:
+                    delete_upload(row["image"], row["video_url"])
+            else:
+                conn.execute("DELETE FROM comments WHERE id=?", (report["target_id"],))
+
+    new_status = "dismissed" if action == "dismissed" else "actioned"
+    conn.execute("""UPDATE reports SET status=?, reviewed_by=?, reviewed_at=?
+                    WHERE id=?""",
+                 (new_status, session["user_id"],
+                  datetime.utcnow().strftime("%Y-%m-%d %H:%M"), report_id))
+
+    # Close the loop with the reporter. A report that vanishes into silence
+    # teaches people not to bother reporting — which is how a community stops
+    # policing itself. Deliberately vague about the outcome: the reporter does
+    # not need to know what happened to the other account.
+    if report["reporter_id"]:
+        note = ("Thanks for your report — we reviewed it and took action."
+                if new_status == "actioned" else
+                "Thanks for your report — we reviewed it and didn't find a "
+                "breach of our rules this time.")
+        try:
+            add_notification(conn, report["reporter_id"], note)
+        except Exception:
+            pass      # never fail the moderation action over a notification
+
+    conn.commit()
+    conn.close()
+    return jsonify({"message": f"Report {new_status}."})
 
 @app.route("/search_users")
 def search_users():
@@ -2545,11 +3220,12 @@ def search_users():
         "SELECT id, username FROM users WHERE username LIKE ? LIMIT 20",
         (f"%{q}%",)
     ).fetchall()
+    hidden = blocked_usernames(conn, session.get("user_id"))
     conn.close()
-    return jsonify([dict(r) for r in rows])
+    return jsonify([dict(r) for r in rows
+                    if (r["username"] or "").lower() not in hidden])
 
 # Follow / Unfollow
-@csrf.exempt
 @app.route("/follow/<int:target_id>", methods=["POST"])
 def follow(target_id):
     if "user_id" not in session:
@@ -2597,7 +3273,6 @@ def get_notifications():
     conn.close()
     return jsonify([dict(r) for r in rows])
 
-@csrf.exempt
 @app.route("/mark_notifications_read", methods=["POST"])
 def mark_notifications_read():
     if "user_id" not in session:
@@ -2610,8 +3285,6 @@ def mark_notifications_read():
     return jsonify({"message": "Marked read"})
 
 # ─── Tripo3D 3D Model Generation ──────────────────────────────────
-@csrf.exempt
-@csrf.exempt
 @app.route("/api/clear_model_cache", methods=["POST"])
 def clear_model_cache():
     """Clear cached models so they regenerate with image-to-model."""
@@ -2711,7 +3384,14 @@ def fetch_task(task_id):
         return jsonify({"error": str(e)})
 
 @app.route("/api/generate_3d", methods=["POST"])
+@limiter.limit("5 per hour; 20 per day")
 def generate_3d():
+    # The only endpoint that spends money per call — Tripo3D bills per
+    # generation. It previously had no rate limit and no quota at all, so a
+    # single script could have emptied the account in minutes.
+    if "user_id" not in session:
+        return jsonify({"error": "Sign in to generate a model"}), 401
+
     data  = request.json or {}
     year  = sanitize(data.get("year",  ""))
     make  = sanitize(data.get("make",  ""))
@@ -2733,6 +3413,7 @@ def generate_3d():
     ).fetchone()
 
     if cached:
+        # A cache hit costs nothing, so it must not consume anyone's quota.
         conn.close()
         return jsonify({
             "status":        "cached",
@@ -2740,6 +3421,15 @@ def generate_3d():
             "thumbnail_url": cached["thumbnail_url"],
         })
 
+    # Only now, when this will actually hit the paid API, is the quota checked.
+    denied = limits.check_quota(conn, session["user_id"], "generate_3d")
+    if denied:
+        conn.close()
+        body, status = denied
+        return jsonify(body), status
+
+    limits.record_usage(conn, session["user_id"], "generate_3d")
+    conn.commit()
     conn.close()
 
     # Not cached — call Tripo3D API
@@ -3032,7 +3722,6 @@ def check_model_cache():
 def builder():
     return render_template("builder.html")
 
-@csrf.exempt
 @app.route("/save_build", methods=["POST"])
 def save_build():
     if "user_id" not in session:
@@ -3100,23 +3789,22 @@ def get_build(build_id):
         return jsonify({"error": "Not found"}), 404
     return jsonify(dict(row))
 
-@csrf.exempt
 @app.route("/delete_car/<int:car_id>", methods=["POST"])
 def delete_car(car_id):
     if "user_id" not in session:
         return jsonify({"error": "Not logged in"}), 401
     conn = get_db_connection()
-    car = conn.execute("SELECT user_id FROM garage WHERE id=?", (car_id,)).fetchone()
+    car = conn.execute("SELECT user_id, image FROM garage WHERE id=?", (car_id,)).fetchone()
     if not car or car["user_id"] != session["user_id"]:
         conn.close()
         return jsonify({"error": "Unauthorized"}), 403
     conn.execute("DELETE FROM mods WHERE car_id=?", (car_id,))
     conn.execute("DELETE FROM garage WHERE id=?", (car_id,))
+    delete_upload(car["image"])
     conn.commit()
     conn.close()
     return jsonify({"message": "Car deleted"})
 
-@csrf.exempt
 @app.route("/delete_mod/<int:mod_id>", methods=["POST"])
 def delete_mod(mod_id):
     if "user_id" not in session:
@@ -3132,7 +3820,6 @@ def delete_mod(mod_id):
     conn.close()
     return jsonify({"message": "Mod deleted"})
 
-@csrf.exempt
 @app.route("/api/share_build/<int:build_id>", methods=["POST"])
 def share_build(build_id):
     if "user_id" not in session:
@@ -3171,7 +3858,6 @@ def share_build(build_id):
     conn.close()
     return jsonify({"message": "Shared to feed"})
 
-@csrf.exempt
 @app.route("/api/clone_build/<int:build_id>", methods=["POST"])
 def clone_build(build_id):
     if "user_id" not in session:
@@ -3213,7 +3899,6 @@ def all_builds():
         result.append(d)
     return jsonify(result)
 
-@csrf.exempt
 @app.route("/delete_build/<int:build_id>", methods=["POST"])
 def delete_build(build_id):
     if "user_id" not in session:
@@ -3446,6 +4131,7 @@ def get_listings():
         ORDER BY {order}
         LIMIT 60
     """, [uid] + params).fetchall()
+    hidden = blocked_usernames(conn, session.get("user_id"))
     conn.close()
 
     results = []
@@ -3460,7 +4146,8 @@ def get_listings():
     if sort == "nearest" and user_lat:
         results.sort(key=lambda x: x.get("distance", 9999))
 
-    return jsonify(results)
+    return jsonify([x for x in results
+                    if (x.get("username") or "").lower() not in hidden])
 
 @app.route("/api/listings/my")
 def my_listings():
@@ -3494,7 +4181,6 @@ def get_listing(listing_id):
     d["images"] = _json.loads(d["images"] or "[]")
     return jsonify(d)
 
-@csrf.exempt
 @app.route("/api/listings/create", methods=["POST"])
 def create_listing():
     if "user_id" not in session:
@@ -3537,23 +4223,26 @@ def create_listing():
     conn.close()
     return jsonify({"message": "Listing created", "id": listing_id})
 
-@csrf.exempt
 @app.route("/api/listings/<int:listing_id>/delete", methods=["POST"])
 def delete_listing(listing_id):
     if "user_id" not in session:
         return jsonify({"error": "Not logged in"}), 401
     conn = get_db_connection()
-    listing = conn.execute("SELECT user_id FROM listings WHERE id=?", (listing_id,)).fetchone()
+    listing = conn.execute("SELECT user_id, images FROM listings WHERE id=?", (listing_id,)).fetchone()
     if not listing or listing["user_id"] != session["user_id"]:
         conn.close()
         return jsonify({"error": "Not authorized"}), 403
     conn.execute("DELETE FROM listings WHERE id=?", (listing_id,))
     conn.execute("DELETE FROM listing_saves WHERE listing_id=?", (listing_id,))
+    # listings.images is a JSON array, not a single path.
+    try:
+        delete_upload(*json.loads(listing["images"] or "[]"))
+    except (ValueError, TypeError):
+        pass
     conn.commit()
     conn.close()
     return jsonify({"message": "Deleted"})
 
-@csrf.exempt
 @app.route("/api/listings/<int:listing_id>/mark_sold", methods=["POST"])
 def mark_sold(listing_id):
     if "user_id" not in session:
@@ -3568,7 +4257,6 @@ def mark_sold(listing_id):
     conn.close()
     return jsonify({"message": "Marked as sold"})
 
-@csrf.exempt
 @app.route("/api/listings/<int:listing_id>/save", methods=["POST"])
 def save_listing(listing_id):
     if "user_id" not in session:
@@ -3698,7 +4386,6 @@ def my_clubs():
     conn.close()
     return jsonify([dict(c) for c in clubs])
 
-@csrf.exempt
 @app.route("/api/clubs/create", methods=["POST"])
 def create_club():
     if "user_id" not in session:
@@ -3746,7 +4433,6 @@ def create_club():
     conn.close()
     return jsonify({"message": "Club created", "slug": slug})
 
-@csrf.exempt
 @app.route("/api/clubs/<int:club_id>/join", methods=["POST"])
 def join_club(club_id):
     if "user_id" not in session:
@@ -3812,9 +4498,10 @@ def club_posts(slug):
         ORDER BY cp.id DESC
     """, (uid, club["id"])).fetchall()
     conn.close()
-    return jsonify([dict(p) for p in posts])
+    hidden = blocked_usernames(conn, uid)
+    return jsonify([dict(p) for p in posts
+                    if (p["username"] or "").lower() not in hidden])
 
-@csrf.exempt
 @app.route("/api/clubs/<slug>/post", methods=["POST"])
 def club_post(slug):
     if "user_id" not in session:
@@ -3847,7 +4534,6 @@ def club_post(slug):
     conn.commit(); conn.close()
     return jsonify({"message": "Posted"})
 
-@csrf.exempt
 @app.route("/api/clubs/post/<int:post_id>/like", methods=["POST"])
 def like_club_post(post_id):
     if "user_id" not in session:
@@ -3868,7 +4554,6 @@ def like_club_post(post_id):
     conn.commit(); conn.close()
     return jsonify({"liked": True})
 
-@csrf.exempt
 @app.route("/api/clubs/<int:club_id>/delete", methods=["POST"])
 def delete_club(club_id):
     if "user_id" not in session:
@@ -3886,7 +4571,6 @@ def delete_club(club_id):
     conn.close()
     return jsonify({"message": "Club deleted"})
 
-@csrf.exempt
 @app.route("/api/clubs/<int:club_id>/promote", methods=["POST"])
 def promote_member(club_id):
     if "user_id" not in session:
@@ -3945,7 +4629,6 @@ def promote_member(club_id):
     conn.commit(); conn.close()
     return jsonify({"message": f"Role updated to {new_role}"})
 
-@csrf.exempt
 @app.route("/api/clubs/<int:club_id>/remove_member", methods=["POST"])
 def remove_club_member(club_id):
     """Moderators and admins can remove members. Only admins can remove mods."""
@@ -3977,7 +4660,6 @@ def remove_club_member(club_id):
     conn.commit(); conn.close()
     return jsonify({"message": "Member removed"})
 
-@csrf.exempt
 @app.route("/api/clubs/post/<int:post_id>/delete", methods=["POST"])
 def delete_club_post(post_id):
     """Post authors can delete their own; moderators and admins can delete any."""
@@ -3985,7 +4667,7 @@ def delete_club_post(post_id):
         return jsonify({"error": "Not logged in"}), 401
     conn = get_db_connection()
     post = conn.execute(
-        "SELECT club_id, user_id FROM club_posts WHERE id=?", (post_id,)
+        "SELECT club_id, user_id, image, video_url FROM club_posts WHERE id=?", (post_id,)
     ).fetchone()
     if not post:
         conn.close()
@@ -4000,6 +4682,7 @@ def delete_club_post(post_id):
     conn.execute("DELETE FROM club_post_likes WHERE post_id=?", (post_id,))
     conn.execute("DELETE FROM club_posts WHERE id=?", (post_id,))
     conn.commit(); conn.close()
+    delete_upload(post["image"], post["video_url"])
     return jsonify({"message": "Post deleted"})
 
 # ─── Messages ─────────────────────────────────────────────────────
@@ -4067,7 +4750,6 @@ def get_thread(other_id):
     conn.close()
     return jsonify([dict(m) for m in msgs])
 
-@csrf.exempt
 @app.route("/api/send_message", methods=["POST"])
 def send_message():
     if "user_id" not in session:
@@ -4087,6 +4769,13 @@ def send_message():
     if not rec:
         conn.close()
         return jsonify({"error": "User not found"}), 404
+
+    # A block has to stop direct messages, or it stops nothing that matters —
+    # DMs are the main channel harassment actually arrives through. Checked in
+    # both directions so the blocked party can't keep messaging either.
+    if receiver_id in blocked_user_ids(conn, session["user_id"]):
+        conn.close()
+        return jsonify({"error": "You can't message this user."}), 403
 
     conn.execute("""
         INSERT INTO messages (sender_id, receiver_id, body, is_read, created_at)
@@ -4141,7 +4830,6 @@ def settings():
                            is_admin=bool(user_d.get("is_admin")))
 
 
-@csrf.exempt
 @app.route("/settings/update_cars", methods=["POST"])
 def update_cars():
     if "user_id" not in session:
@@ -4156,7 +4844,6 @@ def update_cars():
     conn.close()
     return jsonify({"message": "Cars updated"})
 
-@csrf.exempt
 @app.route("/settings/update_account", methods=["POST"])
 def update_account():
     if "user_id" not in session:
@@ -4192,7 +4879,6 @@ def update_account():
         return jsonify({"error": str(e)}), 500
 
 
-@csrf.exempt
 @app.route("/settings/change_password", methods=["POST"])
 def change_password():
     if "user_id" not in session:
@@ -4220,7 +4906,6 @@ def change_password():
     return jsonify({"message": "Password changed successfully"})
 
 
-@csrf.exempt
 @app.route("/settings/update_privacy", methods=["POST"])
 def update_privacy():
     if "user_id" not in session:
@@ -4239,7 +4924,6 @@ def update_privacy():
     return jsonify({"message": "Privacy settings updated"})
 
 
-@csrf.exempt
 @app.route("/settings/update_notifications", methods=["POST"])
 def update_notifications():
     if "user_id" not in session:
@@ -4256,7 +4940,6 @@ def update_notifications():
     return jsonify({"message": "Notification settings updated"})
 
 
-@csrf.exempt
 @app.route("/settings/update_theme", methods=["POST"])
 def update_theme():
     if "user_id" not in session:
@@ -4270,7 +4953,6 @@ def update_theme():
     conn.close()
     return jsonify({"message": "Theme updated"})
 
-@csrf.exempt
 @app.route("/settings/update_color_scheme", methods=["POST"])
 def update_color_scheme():
     if "user_id" not in session:
@@ -4286,7 +4968,6 @@ def update_color_scheme():
     return jsonify({"message": "Color scheme updated"})
 
 
-@csrf.exempt
 @app.route("/settings/delete_account", methods=["POST"])
 def delete_account():
     if "user_id" not in session:
@@ -4304,6 +4985,45 @@ def delete_account():
 
     username = session.get("username", "")
 
+    # 0) Collect every file this user owns BEFORE the rows are deleted —
+    #    afterwards there is nothing left pointing at them and they would be
+    #    stranded on disk, still publicly fetchable. The privacy policy tells
+    #    users deletion removes their content, so it has to actually do that.
+    doomed = []
+
+    def collect(sql, params, *cols):
+        try:
+            for row in conn.execute(sql, params).fetchall():
+                for c in cols:
+                    doomed.append(row[c])
+        except Exception:
+            pass   # table may not exist on an older database
+
+    collect("SELECT avatar, cover_photo FROM users WHERE id=?", (user_id,),
+            "avatar", "cover_photo")
+    collect("SELECT image FROM garage WHERE user_id=?", (user_id,), "image")
+    collect("SELECT thumbnail FROM builds WHERE user_id=?", (user_id,), "thumbnail")
+    collect("SELECT image FROM meets WHERE user_id=?", (user_id,), "image")
+    collect("SELECT image FROM stories WHERE user_id=?", (user_id,), "image")
+    collect("SELECT image FROM vehicle_photos WHERE user_id=?", (user_id,), "image")
+    collect("SELECT glb_url, thumbnail_url FROM generated_models WHERE user_id=?",
+            (user_id,), "glb_url", "thumbnail_url")
+    collect("SELECT image, video_url FROM club_posts WHERE user_id=?", (user_id,),
+            "image", "video_url")
+    if username:
+        collect("SELECT image, video_url FROM posts WHERE username=?", (username,),
+                "image", "video_url")
+    # listings.images holds a JSON array rather than one path
+    try:
+        for row in conn.execute("SELECT images FROM listings WHERE user_id=?",
+                                (user_id,)).fetchall():
+            try:
+                doomed.extend(json.loads(row["images"] or "[]"))
+            except (ValueError, TypeError):
+                pass
+    except Exception:
+        pass
+
     # 1) Mods hang off garage rows — delete before garage
     try:
         conn.execute("DELETE FROM mods WHERE car_id IN (SELECT id FROM garage WHERE user_id = ?)", (user_id,))
@@ -4317,6 +5037,9 @@ def delete_account():
         "generated_models", "listing_saves", "poll_votes",
         "story_views", "meet_rsvps", "club_members",
         "comment_likes", "comment_dislikes", "listings", "stories", "meets",
+        # These four were missing, so a deleted account left rows behind:
+        # unsent drafts, club post likes, and submitted community photos.
+        "drafts", "club_post_likes", "vehicle_photos",
     ]
     for table in tables_with_user_id:
         try:
@@ -4342,9 +5065,23 @@ def delete_account():
     except Exception:
         pass
 
+    # Clubs this user created are deliberately NOT deleted — other members'
+    # posts and membership live inside them, and removing one person's account
+    # should not destroy a community. The creator reference is cleared instead.
+    try:
+        conn.execute("UPDATE clubs SET created_by=NULL WHERE created_by=?", (user_id,))
+    except Exception:
+        pass
+
     conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
     conn.commit()
     conn.close()
+
+    # Files last: only once the rows are definitely gone. Doing it earlier
+    # would risk deleting someone's photos and then failing the transaction,
+    # leaving rows pointing at files that no longer exist.
+    removed = delete_upload(*doomed)
+    app.logger.info("Account %s deleted, %d uploaded files removed", user_id, removed)
 
     session.clear()
     return jsonify({"message": "Account deleted"})
@@ -4369,7 +5106,6 @@ def get_saved_posts():
     return jsonify([dict(p) for p in posts])
 
 
-@csrf.exempt
 @app.route("/toggle_save_post/<int:post_id>", methods=["POST"])
 def toggle_save_post(post_id):
     if "user_id" not in session:
@@ -4457,7 +5193,6 @@ def gif_search():
         return jsonify({"error": str(e)}), 500
 
 # ─── Link Preview ─────────────────────────────────────────────────
-@csrf.exempt
 @app.route("/api/link_preview", methods=["POST"])
 def link_preview():
     data = request.json or {}
@@ -4564,7 +5299,6 @@ def api_leaderboard():
         "most_followed":[dict(u) for u in most_followed],
     })
 
-@csrf.exempt
 @app.route("/save_race_result", methods=["POST"])
 def save_race_result():
     if "user_id" not in session:
@@ -4722,6 +5456,7 @@ def get_stories():
         WHERE s.expires_at > datetime('now')
         ORDER BY s.created_at DESC
     """, (uid, uid)).fetchall()
+    hidden = blocked_usernames(conn, session.get("user_id"))
     conn.close()
     # Group by user — one slot per user (latest story shown)
     seen_users = {}
@@ -4735,9 +5470,10 @@ def get_stories():
             result.append(d)
     # Put own story first if present
     result.sort(key=lambda x: -x["is_own"])
-    return jsonify(result)
+    return jsonify([x for x in result
+                    if (x["username"] or "").lower() not in hidden])
 
-@csrf.exempt
+@limiter.limit("20 per hour")
 @app.route("/api/stories/add", methods=["POST"])
 def add_story():
     if "user_id" not in session:
@@ -4765,7 +5501,6 @@ def add_story():
     conn.close()
     return jsonify({"message": "Story posted"})
 
-@csrf.exempt
 @app.route("/api/stories/view/<int:story_id>", methods=["POST"])
 def view_story(story_id):
     if "user_id" not in session:
@@ -4798,6 +5533,7 @@ def get_meets():
         FROM meets m
         ORDER BY m.meet_date ASC, m.id DESC
     """, (uid, uid)).fetchall()
+    hidden = blocked_usernames(conn, session.get("user_id"))
     conn.close()
     result = []
     for r in rows:
@@ -4806,7 +5542,6 @@ def get_meets():
         result.append(d)
     return jsonify(result)
 
-@csrf.exempt
 @app.route("/api/meets/create", methods=["POST"])
 def create_meet():
     if "user_id" not in session:
@@ -4835,7 +5570,6 @@ def create_meet():
     conn.close()
     return jsonify({"message": "Meet created"})
 
-@csrf.exempt
 @app.route("/api/meets/rsvp/<int:meet_id>", methods=["POST"])
 def rsvp_meet(meet_id):
     if "user_id" not in session:
@@ -4859,6 +5593,200 @@ def rsvp_meet(meet_id):
     conn.close()
     return jsonify({"action": action, "rsvp_count": count})
 
+# ─── Fit Guides ──────────────────────────────────────────────────
+# "What's the best car if I'm 6'4\"?" is one of the most-asked questions online
+# and one of the worst-answered, because everyone answers from anecdote. These
+# guides answer from published spec sheets.
+#
+# Two sources of content, deliberately split so neither can drift:
+#   - content/fit-guides/<slug>.md    prose, authored by hand
+#   - content/fit-guides/fit-data.json  every measurement, once
+# The markdown carries a <!-- TABLES --> marker; the data tables are rendered
+# from JSON at that point. A corrected figure is a one-line JSON edit and both
+# the table and any future comparison integration pick it up.
+
+GUIDES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                          "content", "fit-guides")
+FIT_DATA_FILE = os.path.join(GUIDES_DIR, "fit-data.json")
+TABLE_MARKER = "<!-- TABLES -->"
+
+# Slugs come from the URL and are used to build a file path, so they are
+# restricted to a character set that cannot escape the directory. Never
+# relax this to include dots or slashes.
+SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
+
+try:
+    import markdown as _markdown
+except ImportError:      # pragma: no cover - guides degrade rather than 500
+    _markdown = None
+
+
+def _render_markdown(text):
+    """Render guide prose.
+
+    The input is repo-authored content, not user submissions, so its HTML is
+    trusted. Never point this at anything a user can write — it does not go
+    through sanitize().
+    """
+    if _markdown is None:
+        # Missing dependency shouldn't take the page down; show the prose
+        # readably and make the fix obvious in the logs.
+        app.logger.warning("markdown not installed — guides rendering as plain text. "
+                           "pip install markdown")
+        return "<pre class='guide-raw'>" + escape(text) + "</pre>"
+    return _markdown.markdown(text, extensions=["extra", "sane_lists"])
+
+
+def load_fit_data(filename=None):
+    """Load a guide's dataset.
+
+    Guides declare their own `data:` file in front matter — cars are judged on
+    headroom, bikes on seat height, and the two do not share a scale. The
+    filename is validated because it arrives from a content file rather than
+    being hardcoded.
+    """
+    name = filename or os.path.basename(FIT_DATA_FILE)
+    if not re.fullmatch(r"[a-z0-9][a-z0-9._-]{0,63}\.json", name or ""):
+        raise ValueError("bad data filename")
+    path = os.path.join(GUIDES_DIR, name)
+    with open(path, encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+def fit_verdict(car, thresholds):
+    """Judge on the honest number: if a with-roof figure exists, use it.
+
+    An explicit `verdict` in the data always wins — some cars are a bad
+    recommendation for reasons a single measurement doesn't capture (the Mazda 3
+    has fine legroom and a roofline that ruins it).
+    """
+    if car.get("verdict"):
+        return car["verdict"]
+    h = car.get("headroomRoof") or car.get("headroom")
+    if h is None:
+        return "unknown"
+    if h >= thresholds.get("good", 40.0):
+        return "pick"
+    if h >= thresholds.get("ok", 38.5):
+        return "ok"
+    return "avoid"
+
+
+def parse_guide(path):
+    """Split a guide file into `key: value` front matter and body.
+
+    Front matter runs until a line of exactly `---`. Kept deliberately simple —
+    no YAML dependency for what is five string fields.
+    """
+    raw = open(path, encoding="utf-8").read()
+    meta, body = {}, raw
+    if "\n---" in raw:
+        head, _, body = raw.partition("\n---\n")
+        for line in head.splitlines():
+            if ":" in line:
+                k, _, v = line.partition(":")
+                meta[k.strip()] = v.strip()
+    return meta, body
+
+
+def list_guides():
+    if not os.path.isdir(GUIDES_DIR):
+        return []
+    out = []
+    for name in sorted(os.listdir(GUIDES_DIR)):
+        if not name.endswith(".md"):
+            continue
+        slug = name[:-3]
+        if not SLUG_RE.match(slug):
+            continue
+        meta, _ = parse_guide(os.path.join(GUIDES_DIR, name))
+        meta["slug"] = slug
+        meta.setdefault("title", slug.replace("-", " ").title())
+        out.append(meta)
+    return out
+
+
+@app.route("/guides")
+def guides_index():
+    return render_template("guides.html", guides=list_guides())
+
+
+@app.route("/guides/<slug>")
+def guide_detail(slug):
+    if not SLUG_RE.match(slug or ""):
+        return render_template("error.html", message="Guide not found."), 404
+    path = os.path.join(GUIDES_DIR, slug + ".md")
+    if not os.path.exists(path):
+        return render_template("error.html", message="Guide not found."), 404
+
+    meta, body = parse_guide(path)
+    meta["slug"] = slug
+    before, _, after = body.partition(TABLE_MARKER)
+
+    # Seat-height guides don't fit the good/bad model the car guide uses: a
+    # low seat is right for a short rider and wrong for a tall one, so there
+    # is no single "better" direction to rank on. They get their own layout,
+    # grouped into inseam bands instead of scored.
+    if meta.get("layout") == "seatheight":
+        data = load_fit_data(meta.get("data"))
+        bikes = data.get("bikes", [])
+        bands = [{**b, "bikes": [k for k in bikes if k.get("band") == b["key"]]}
+                 for b in data.get("bands", [])]
+        return render_template(
+            "guide_detail.html",
+            meta=meta,
+            intro_html=_render_markdown(before),
+            outro_html=_render_markdown(after),
+            bands=[b for b in bands if b["bikes"]],
+            coverage={"measured": data.get("measured", len(bikes)),
+                      "total": data.get("totalBikes", len(bikes))},
+            sources=data.get("sources", []),
+        )
+
+    data = load_fit_data(meta.get("data"))
+    thresholds = data.get("thresholds", {})
+
+    # Only sourced figures are publishable. Unverified rows are surfaced
+    # separately as open research, never as a recommendation.
+    cars = [c for c in data.get("cars", [])
+            if c.get("verified") and c.get("headroom") is not None]
+    for c in cars:
+        c["verdictKey"] = fit_verdict(c, thresholds)
+    pending = [c for c in data.get("cars", []) if not c.get("verified")]
+
+    tiers = []
+    for tier in data.get("tiers", []):
+        rows = sorted((c for c in cars if c.get("tier") == tier["key"]),
+                      key=lambda c: c.get("headroom") or 0, reverse=True)
+        if rows:
+            tiers.append({**tier, "cars": rows})
+
+    return render_template(
+        "guide_detail.html",
+        meta=meta,
+        intro_html=_render_markdown(before),
+        outro_html=_render_markdown(after),
+        tiers=tiers,
+        pending=pending,
+        sources=data.get("sources", []),
+        # Ranked across every tier — the "price doesn't buy headroom" point
+        # only lands when a Bronco Sport and a Q8 sit in the same table.
+        ranked=sorted(cars, key=lambda c: c.get("headroom") or 0, reverse=True),
+    )
+
+
+@app.route("/api/fit_data")
+def api_fit_data():
+    """Publishable rows only, for the comparison page to flag fit inline."""
+    data = load_fit_data()
+    thresholds = data.get("thresholds", {})
+    cars = [c for c in data.get("cars", [])
+            if c.get("verified") and c.get("headroom") is not None]
+    for c in cars:
+        c["verdictKey"] = fit_verdict(c, thresholds)
+    return jsonify({"cars": cars, "thresholds": thresholds})
+
+
 if __name__ == "__main__":
     # Local development only. In production gunicorn imports `app` directly and
     # never runs this block — see the Procfile.
@@ -4866,7 +5794,24 @@ if __name__ == "__main__":
     # debug=True must never reach production: the Werkzeug debugger exposes an
     # interactive console that executes arbitrary Python on the server.
     init_db()
-    app.run(debug=not IS_PROD, port=int(os.getenv("PORT", 5001)))
+    # host defaults to 127.0.0.1, which only accepts connections from this
+    # machine — a phone on the same wifi gets "server stopped responding".
+    # 0.0.0.0 listens on every interface so the LAN address works, which is
+    # what testing on a real device needs.
+    #
+    # Only ever do this on a trusted network: with debug=True the Werkzeug
+    # debugger is exposed, and it runs arbitrary Python. Set HOST=127.0.0.1
+    # on public wifi.
+    host = os.getenv("HOST", "0.0.0.0")
+    port = int(os.getenv("PORT", 5001))
+    if host == "0.0.0.0":
+        import socket
+        try:
+            lan = socket.gethostbyname(socket.gethostname())
+            print(f"\n  Phone on the same wifi:  http://{lan}:{port}\n")
+        except OSError:
+            pass
+    app.run(debug=not IS_PROD, host=host, port=port)
 else:
     # Under gunicorn there's no __main__, so migrations would never run and the
     # first request would hit missing tables.

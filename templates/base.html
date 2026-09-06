@@ -14,8 +14,27 @@
     <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
     <meta name="theme-color" content="#16202e">
     <meta name="apple-mobile-web-app-title" content="RideInsight">
+    <!-- iOS honours the manifest's display mode on recent versions, but older
+         iOS still needs this to launch without Safari chrome. -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="csrf-token" content="{{ csrf_token() }}">
+    {# Lets client-rendered cards tell your own content from other people's,
+       so the overflow menu can offer Delete rather than Report and Block. #}
+    <meta name="current-user" content="{{ session.get('username', '') }}">
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <script>
+        // Registered from the root so the worker's scope covers the whole app.
+        // Failure is non-fatal: without it the site simply behaves as a normal
+        // website, which is exactly how it worked before.
+        if ("serviceWorker" in navigator) {
+            window.addEventListener("load", () => {
+                navigator.serviceWorker.register("/sw.js")
+                    .catch(err => console.warn("Service worker not registered:", err));
+            });
+        }
+    </script>
 </head>
 <body>
 
@@ -121,6 +140,21 @@
 </nav>
 
 <aside class="left-sidebar hidden" id="sidebar">
+    {# Comparison is the reason the app exists — the social layer is what keeps
+       people coming back, but "which car should I buy" is the job it does.
+       It sits above everything else, on its own, so that reads immediately. #}
+    <div class="sidebar-group sidebar-hero">
+        <p class="sidebar-hero-item" onclick="window.location.href='/compare'">
+            <i data-lucide="scale"></i>
+            <span>
+                <strong>Compare Vehicles</strong>
+                <small>Specs, running costs, real numbers</small>
+            </span>
+        </p>
+        <p onclick="window.location.href='/guides'"><i data-lucide="ruler"></i> Fit Guides</p>
+        <p onclick="window.location.href='/saved'"><i data-lucide="bookmark"></i> Saved Comparisons</p>
+    </div>
+
     <div class="sidebar-group">
         <div class="sidebar-group-label">Community</div>
         <p onclick="window.location.href='/'"><i data-lucide="home"></i> Feed</p>
@@ -133,8 +167,6 @@
     <div class="sidebar-group">
         <div class="sidebar-group-label">Garage</div>
         <p onclick="window.location.href='/garage'"><i data-lucide="car"></i> My Garage</p>
-        <p onclick="window.location.href='/compare'"><i data-lucide="scale"></i> Compare</p>
-        <p onclick="window.location.href='/saved'"><i data-lucide="bookmark"></i> Saved Comparisons</p>
     </div>
 
     <div class="sidebar-group">

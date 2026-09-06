@@ -81,6 +81,16 @@
                     <button class="btn btn-primary" onclick="savePrivacy()">Save Privacy Settings</button>
                     <div class="settings-msg" id="privacyMsg"></div>
                 </div>
+
+                {# Blocked people are hidden everywhere, including their own
+                   profile — so without this list there is no way to undo a
+                   block once it's made. #}
+                <h3 style="margin-top:22px;"><i data-lucide="ban"></i> Blocked accounts</h3>
+                <div class="settings-card">
+                    <div id="blockedList" class="blocked-list">
+                        <p class="blocked-empty">Loading…</p>
+                    </div>
+                </div>
             </div>
 
             <!-- Notifications -->

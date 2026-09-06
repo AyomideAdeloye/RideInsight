@@ -1,0 +1,62 @@
+Security hardening, moderation tooling, Fit Guides and deploy config
+
+SECURITY
+- Re-enable CSRF: 64 of 66 POST routes were @csrf.exempt. window.fetch is now
+  wrapped centrally so same-origin non-GET requests carry the token
+  automatically; only the two public waitlist endpoints stay exempt.
+- Fix stored XSS: meets.html built a JS string with hand-written quotes, and
+  signup allowed any characters, so a username like "; alert(1); // escaped
+  into script context. Now |tojson plus a restricted username charset.
+- Fix session fixation: login set session keys without clearing first, so a
+  pre-seeded session survived the privilege change.
+- Add security headers (there were none): CSP, nosniff, frame-ancestors none,
+  Referrer-Policy, Permissions-Policy, and HSTS in production only.
+- Rate limiting extended from 5 routes to all 166, keyed on user when signed
+  in rather than IP so one NAT isn't treated as one visitor.
+- Add per-user daily quotas, a global spend circuit breaker and storage
+  quotas. /api/generate_3d had no limit at all and bills per call.
+- Add Cloudflare Turnstile on signup. Fails closed in production.
+
+MODERATION AND PRIVACY
+- Blocking was recorded but never enforced. Now applied across feed, comments,
+  replies, explore, search, stories, clubs, listings, meets and DMs, and
+  mutually rather than one-way.
+- Reports went to a table no screen read. Adds /admin/reports with a review
+  queue, post- and comment-level reporting, and notification back to the
+  reporter.
+- Uploads were never deleted. Files are now removed on content and account
+  deletion, guarded by a reference check so two rows sharing one legacy file
+  can't delete it out from under each other.
+- Add the missing /delete_post route; users could not delete their own posts
+  despite the privacy policy saying they could.
+- Privacy policy now discloses Tripo3D AI use and names all ten processors;
+  terms gain an objectionable-content clause.
+
+FIT GUIDES
+- New /guides feature: measurements live once in JSON, prose in markdown,
+  tables rendered server-side so figures can't drift.
+- Tall-driver guide with 16 sourced cars; motorcycle seat-height guide
+  generated from the existing bike data.
+- Compare surfaces fit inline, matching strictly on generation and body style.
+
+DEPLOY
+- render.yaml with a 10GB persistent disk; DB and uploads are now
+  env-configurable so they land on it.
+- SQLite WAL and busy timeout: ~17-45x faster under concurrent writes, and no
+  lost writes at high concurrency.
+- Backup script using VACUUM INTO, with verification and restore.
+- PWA: service worker, offline page, installable without the App Store.
+- Isolate third-party spec lookups behind providers.py.
+
+FIXES
+- Flask bound to 127.0.0.1 only, so phones on the LAN could not connect.
+- Share, geolocation and clipboard all failed silently over plain HTTP; they
+  now degrade with a clear message and a working fallback.
+- Race results reported a quarter mile regardless of distance raced.
+- Stories offered no way to post a second one.
+- Notification dropdown overflowed narrow screens.
+- Race controls: nitro moved away from the accelerator.
+- Race sprites were loaded from a gitignored folder and would have 404'd in
+  production.
+
+Requires: pip install -r requirements.txt (adds Markdown)

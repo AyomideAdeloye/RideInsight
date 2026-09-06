@@ -1,13 +1,57 @@
-// ─── CSRF-aware fetch helper ─────────────────────────────────────
+// ─── CSRF ────────────────────────────────────────────────────────
+// Every state-changing request needs a CSRF token. There are well over a
+// hundred fetch() calls across the app, and relying on each one to remember
+// csrfFetch() is how 64 routes ended up exempted from protection instead.
+//
+// So the token is attached centrally: window.fetch is wrapped once here, and
+// any same-origin request that isn't a GET/HEAD gets the header whether the
+// caller asked for it or not. New code cannot forget.
+//
+// Cross-origin requests are left completely untouched — attaching our token to
+// a third-party API would leak it.
+(function () {
+    const nativeFetch = window.fetch.bind(window);
+    const SAFE = ["GET", "HEAD", "OPTIONS", "TRACE"];
+
+    function token() {
+        return document.querySelector('meta[name="csrf-token"]')?.content || "";
+    }
+
+    window.fetch = function (input, init = {}) {
+        const method = (init.method || (input && input.method) || "GET").toUpperCase();
+        if (SAFE.includes(method)) return nativeFetch(input, init);
+
+        // Resolve the target against the current page so relative URLs
+        // ("/like_post/3") are correctly seen as same-origin.
+        let sameOrigin = true;
+        try {
+            const url = new URL(
+                typeof input === "string" ? input : input.url,
+                window.location.href
+            );
+            sameOrigin = url.origin === window.location.origin;
+        } catch (e) { /* malformed URL — treat as same-origin and let it fail */ }
+
+        if (!sameOrigin) return nativeFetch(input, init);
+
+        const t = token();
+        if (!t) return nativeFetch(input, init);
+
+        // Headers may arrive as a Headers instance or a plain object.
+        const headers = new Headers(
+            init.headers || (input && input.headers) || {}
+        );
+        if (!headers.has("X-CSRFToken")) headers.set("X-CSRFToken", t);
+
+        return nativeFetch(input, { ...init, headers });
+    };
+})();
+
+// Kept because a lot of existing code calls it. The wrapper above already
+// adds the header, so this is now just a passthrough — harmless either way,
+// since the header is only ever set once.
 function csrfFetch(url, options = {}) {
-    const token = document.querySelector('meta[name="csrf-token"]')?.content;
-    return fetch(url, {
-        ...options,
-        headers: {
-            ...(options.headers || {}),
-            ...(token ? { "X-CSRFToken": token } : {})
-        }
-    });
+    return fetch(url, options);
 }
 
 let posts = [];
@@ -380,6 +424,128 @@ async function votePoll(postId, optionIndex, el) {
     if (meta) meta.textContent = `${total} vote${total !== 1 ? "s" : ""}`;
 }
 
+// ─── Overflow menu (report / block / delete) ────────────────────
+// The backend has had report and block endpoints for a while, but nothing in
+// the feed called them — you could only report from a profile page. App store
+// review tests reporting an individual post, and more to the point, a user
+// being harassed shouldn't have to navigate to a profile to act.
+
+// Who's logged in. Rendered into base.html so the menu can tell "your post"
+// (offer delete) from "someone else's" (offer report and block).
+function currentUser() {
+    return document.querySelector('meta[name="current-user"]')?.content || "";
+}
+
+function postMenu(post) {
+    const me = currentUser();
+    if (!me) return "";                       // logged out: no actions
+    const mine = me.toLowerCase() === (post.username || "").toLowerCase();
+    const u = esc(post.username);
+    return `
+        <div class="pmenu">
+            <button class="pmenu-btn" aria-label="More options"
+                    onclick="togglePostMenu(event, ${post.id})">
+                <i data-lucide="more-horizontal"></i>
+            </button>
+            <div class="pmenu-drop" id="pmenu-${post.id}">
+                ${mine ? `
+                    <button class="pmenu-item pmenu-danger" onclick="deleteOwnPost(${post.id})">
+                        <i data-lucide="trash-2"></i> Delete post
+                    </button>
+                ` : `
+                    <button class="pmenu-item" onclick="reportContent('post', ${post.id})">
+                        <i data-lucide="flag"></i> Report post
+                    </button>
+                    <button class="pmenu-item" onclick="blockUser('${u}')">
+                        <i data-lucide="ban"></i> Block @${u}
+                    </button>
+                `}
+            </div>
+        </div>`;
+}
+
+function togglePostMenu(event, id) {
+    event.stopPropagation();
+    const drop = document.getElementById(`pmenu-${id}`);
+    if (!drop) return;
+    const wasOpen = drop.classList.contains("open");
+    closeAllPostMenus();
+    if (!wasOpen) drop.classList.add("open");
+}
+
+function closeAllPostMenus() {
+    document.querySelectorAll(".pmenu-drop.open, .cmenu-drop.open")
+            .forEach(d => d.classList.remove("open"));
+}
+document.addEventListener("click", closeAllPostMenus);
+
+async function reportContent(type, id) {
+    const reason = prompt(
+        `Why are you reporting this ${type}?\n\n` +
+        `Examples: spam, harassment, hate speech, nudity, illegal content`);
+    if (reason === null) return;              // cancelled
+    const res = await fetch("/api/report_content", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type, id, reason })
+    });
+    const data = await res.json().catch(() => ({}));
+    alert(data.message || data.error || "Could not send report.");
+}
+
+async function blockUser(username) {
+    if (!confirm(`Block @${username}?\n\n` +
+                 `You won't see their posts or comments, and they can't ` +
+                 `message you.`)) return;
+    const res = await fetch(`/api/block/${encodeURIComponent(username)}`,
+                            { method: "POST" });
+    const data = await res.json().catch(() => ({}));
+    alert(data.message || data.error || "Could not block.");
+    if (res.ok) location.reload();            // drop their content from view
+}
+
+async function deleteOwnPost(id) {
+    if (!confirm("Delete this post? This can't be undone.")) return;
+    const res = await fetch(`/delete_post/${id}`, { method: "POST" });
+    if (res.ok) {
+        document.getElementById(`post-card-${id}`)?.remove();
+    } else {
+        alert("Could not delete the post.");
+    }
+}
+
+function commentMenu(c) {
+    const me = currentUser();
+    if (!me) return "";
+    const mine = me.toLowerCase() === (c.username || "").toLowerCase();
+    if (mine) return "";        // deleting own comments is a separate feature
+    const u = esc(c.username);
+    return `
+        <div class="pmenu cmenu">
+            <button class="pmenu-btn" aria-label="More options"
+                    onclick="toggleCommentMenu(event, ${c.id})">
+                <i data-lucide="more-horizontal"></i>
+            </button>
+            <div class="pmenu-drop cmenu-drop" id="cmenu-${c.id}">
+                <button class="pmenu-item" onclick="reportContent('comment', ${c.id})">
+                    <i data-lucide="flag"></i> Report comment
+                </button>
+                <button class="pmenu-item" onclick="blockUser('${u}')">
+                    <i data-lucide="ban"></i> Block @${u}
+                </button>
+            </div>
+        </div>`;
+}
+
+function toggleCommentMenu(event, id) {
+    event.stopPropagation();
+    const drop = document.getElementById(`cmenu-${id}`);
+    if (!drop) return;
+    const wasOpen = drop.classList.contains("open");
+    closeAllPostMenus();
+    if (!wasOpen) drop.classList.add("open");
+}
+
 // ─── Post Card ──────────────────────────────────────────────────
 function createPostCard(post) {
     const card = document.createElement("div");
@@ -391,7 +557,10 @@ function createPostCard(post) {
                 <span class="username" onclick="window.location.href='/profile/${esc(post.username)}'">@${esc(post.username)}</span>
                 ${post.main_car ? `<span class="post-user-car"><i data-lucide="car"></i>${esc(post.main_car)}</span>` : ""}
             </div>
-            <span class="time">${esc(post.time)}</span>
+            <div class="post-header-right">
+                <span class="time">${esc(post.time)}</span>
+                ${postMenu(post)}
+            </div>
         </div>
         <h2 class="post-title">${esc(post.title)}</h2>
         <p class="post-body">${esc(post.body)}</p>
@@ -528,6 +697,7 @@ async function loadComments(postId) {
                     <i data-lucide="corner-down-right"></i>
                     ${c.reply_count > 0 ? c.reply_count + ' ' : ''}Repl${c.reply_count !== 1 ? 'ies' : 'y'}
                 </button>
+                ${commentMenu(c)}
             </div>
             <div class="replies-section" id="replies-${c.id}" style="display:none;">
                 <div class="replies-list" id="replies-list-${c.id}"></div>
@@ -721,9 +891,74 @@ async function loadPosts(query = "") {
     posts.forEach(post => feed.appendChild(createPostCard(post)));
 }
 
-function sharePost(postId) {
+async function sharePost(postId) {
     const url = `${window.location.origin}/post/${postId}`;
-    navigator.clipboard.writeText(url).then(() => alert("Link copied!")).catch(() => prompt("Copy this link:", url));
+
+    // On a phone this opens the real share sheet — Instagram, Messages,
+    // whatever they have — which is what people actually want from Share.
+    if (navigator.share) {
+        try {
+            await navigator.share({ title: "RideInsight", url });
+            return;
+        } catch (err) {
+            if (err && err.name === "AbortError") return;   // they cancelled
+            // otherwise fall through to copying
+        }
+    }
+
+    // No native sheet: desktop browsers mostly lack navigator.share, and it's
+    // absent over plain http too. Offer the destinations directly rather than
+    // dead-ending on "copy this link".
+    showShareSheet(url);
+}
+
+function showShareSheet(url) {
+    closeShareSheet();
+    const enc = encodeURIComponent(url);
+    const text = encodeURIComponent("Check this out on RideInsight");
+    const targets = [
+        { label: "Copy link",  icon: "link",     action: `copyShareLink('${url}')` },
+        { label: "Email",      icon: "mail",     href: `mailto:?subject=${text}&body=${enc}` },
+        { label: "Messages",   icon: "message-square", href: `sms:?&body=${text}%20${enc}` },
+        { label: "WhatsApp",   icon: "phone",    href: `https://wa.me/?text=${text}%20${enc}` },
+        { label: "X",          icon: "twitter",  href: `https://twitter.com/intent/tweet?url=${enc}&text=${text}` },
+    ];
+    const sheet = document.createElement("div");
+    sheet.className = "story-sheet-backdrop";
+    sheet.id = "shareSheet";
+    sheet.innerHTML = `
+        <div class="story-sheet" onclick="event.stopPropagation()">
+            ${targets.map(t => t.href
+                ? `<a class="story-sheet-item" href="${t.href}" target="_blank"
+                      rel="noopener" onclick="closeShareSheet()">
+                     <i data-lucide="${t.icon}"></i> ${t.label}
+                   </a>`
+                : `<button class="story-sheet-item" onclick="${t.action}">
+                     <i data-lucide="${t.icon}"></i> ${t.label}
+                   </button>`).join("")}
+            <button class="story-sheet-item story-sheet-cancel"
+                    onclick="closeShareSheet()">Cancel</button>
+        </div>`;
+    sheet.onclick = closeShareSheet;
+    document.body.appendChild(sheet);
+    if (window.refreshIcons) window.refreshIcons();
+}
+
+function closeShareSheet() {
+    document.getElementById("shareSheet")?.remove();
+}
+
+async function copyShareLink(url) {
+    closeShareSheet();
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        try {
+            await navigator.clipboard.writeText(url);
+            alert("Link copied!");
+            return;
+        } catch (err) { /* fall through */ }
+    }
+    // Last resort where the Clipboard API is unavailable (plain http).
+    prompt("Copy this link:", url);
 }
 
 // ─── Post Modal ─────────────────────────────────────────────────
@@ -1040,18 +1275,45 @@ function closeStoryViewer(e) {
     loadStories(); // refresh viewed state
 }
 
-// "Your Story" bubble — open creator or view own story
+// "Your Story" bubble — the name always promised options, but it went straight
+// to the viewer once you had a story, which left no way to post a second one.
+// Now it asks, the way every stories UI does.
 function openMyStoryOptions() {
     const ownStory = _stories.find(s => s.is_own);
-    if (ownStory) {
-        // Open the full viewer starting at the own story (it's index 0 in _stories since sorted first)
-        _storyIndex = 0;
-        // Temporarily treat own story as viewable
-        const all = _stories; // includes own story at index 0
-        showStoryViewerAll(all, 0);
-    } else {
-        openStoryCreator();
-    }
+    if (!ownStory) { openStoryCreator(); return; }
+    showStorySheet();
+}
+
+function showStorySheet() {
+    closeStorySheet();
+    const sheet = document.createElement("div");
+    sheet.className = "story-sheet-backdrop";
+    sheet.id = "storySheet";
+    sheet.innerHTML = `
+        <div class="story-sheet" onclick="event.stopPropagation()">
+            <button class="story-sheet-item" onclick="closeStorySheet(); viewMyStory()">
+                <i data-lucide="eye"></i> View your story
+            </button>
+            <button class="story-sheet-item" onclick="closeStorySheet(); openStoryCreator()">
+                <i data-lucide="plus"></i> Add another story
+            </button>
+            <button class="story-sheet-item story-sheet-cancel" onclick="closeStorySheet()">
+                Cancel
+            </button>
+        </div>`;
+    sheet.onclick = closeStorySheet;         // tap outside to dismiss
+    document.body.appendChild(sheet);
+    if (window.refreshIcons) window.refreshIcons();
+}
+
+function closeStorySheet() {
+    document.getElementById("storySheet")?.remove();
+}
+
+function viewMyStory() {
+    // Own story sorts first, so it's index 0.
+    _storyIndex = 0;
+    showStoryViewerAll(_stories, 0);
 }
 
 function showStoryViewerAll(list, idx) {

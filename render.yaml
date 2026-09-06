@@ -1,0 +1,84 @@
+# Render blueprint. Create the service from this file rather than clicking
+# through the dashboard, so the config lives in git with everything else.
+#
+# The disk is the point: without it, SQLite and every user upload are wiped
+# on each deploy, because the container filesystem is ephemeral.
+
+services:
+  - type: web
+    name: rideinsight
+    runtime: python
+    plan: starter          # 0.5 CPU / 512 MB. Free tier is unusable here — it
+                           # sleeps after 15 min and cold-starts for ~1 minute.
+    region: oregon
+    branch: main
+
+    buildCommand: pip install -r requirements.txt
+    # One worker, not two. Each gunicorn worker is a full Python process with
+    # the whole app loaded; two of them do not fit comfortably in 512 MB.
+    # Eight threads give the same concurrency from one process. If memory
+    # holds and traffic grows, move to a bigger plan before adding workers.
+    startCommand: gunicorn app:app --workers 1 --threads 8 --timeout 60 --bind 0.0.0.0:$PORT
+
+    healthCheckPath: /welcome
+
+    disk:
+      name: rideinsight-data
+      mountPath: /var/data
+      # Sized for uploads, not the database. At the current 100 MB upload cap a
+      # 1 GB disk is only ten videos — and when the disk fills, SQLite writes
+      # start failing, so it takes the whole app down rather than just uploads.
+      # 10 GB is roughly 170 phone videos or 2,500 photos, at ~$0.25/GB/month.
+      # Render can grow a disk but never shrink it, so over-provision.
+      sizeGB: 10
+
+    envVars:
+      # Both must point at the mounted disk or they vanish on redeploy.
+      - key: DB_PATH
+        value: /var/data/rideinsight.db
+      - key: UPLOAD_FOLDER
+        value: /var/data/uploads
+
+      # app.py refuses to boot in production without a SECRET_KEY, which is
+      # deliberate — a default key would let anyone forge a session cookie.
+      # generateValue makes Render create one and keep it stable across deploys.
+      - key: SECRET_KEY
+        generateValue: true
+
+      # Turns on secure cookies and disables the Werkzeug debugger.
+      - key: FLASK_ENV
+        value: production
+
+      - key: PYTHON_VERSION
+        value: "3.11"
+
+      # CAPTCHA. Get both from Cloudflare → Turnstile (free). The site key is
+      # public; the secret is not. Without TURNSTILE_SECRET the app REFUSES
+      # signups in production rather than quietly letting bots through.
+      - key: TURNSTILE_SITE_KEY
+        sync: false
+      - key: TURNSTILE_SECRET
+        sync: false
+
+      # Cost controls. Defaults are in limits.py; override here to tighten or
+      # loosen without a deploy. GLOBAL_GENERATE_3D is the circuit breaker on
+      # the Tripo3D bill — the only endpoint that spends money per call.
+      - key: QUOTA_GENERATE_3D
+        value: "5"
+      - key: GLOBAL_GENERATE_3D
+        value: "50"
+      - key: QUOTA_STORAGE_MB
+        value: "200"
+
+      # Secrets — set these in the Render dashboard, not here. sync:false means
+      # Render prompts for them instead of expecting a value in this file.
+      - key: API_NINJAS_KEY
+        sync: false
+      - key: UNSPLASH_ACCESS_KEY
+        sync: false
+      - key: TRIPO3D_API_KEY
+        sync: false
+      - key: KLIPY_API_KEY
+        sync: false
+      - key: GNEWS_API_KEY
+        sync: false

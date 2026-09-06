@@ -259,6 +259,18 @@ const SEDAN_CATEGORIES = [
 // Same platform, same parts bin, so they share one category list. Slots
 // self-manage, so each car only shows what its own GLB actually contains —
 // nothing breaks if one has a spoiler modelled and the other doesn't yet.
+// The Porsche shares the BMW M parts list except for its wheels: the GT3
+// ships on forged centre-locks that cost more than some of the cars in this
+// app, so the stock entry carries a real link and price even though it is
+// never billed as an upgrade. Priced per wheel by the retailer, which is
+// worth stating — a set is four times the sticker.
+const PORSCHE_WHEEL_STOCK = {
+    label: "Stock Forged",
+    note:  "$5,834 per wheel · $23,338 a set",
+    url:   "https://www.alloywheelsdirect.net/porsche_alloys/porsche-gt3-wheels" +
+           "?partnumber=9GT601025RTR0&country=US",
+};
+
 const BMW_M_CATEGORIES = [
     wheelCategory(),
     brakeCategory(),
@@ -302,6 +314,13 @@ const BMW_M_CATEGORIES = [
         ]
     },
 ];
+
+// Same list, with the GT3's own wheels swapped in for Wheel_A. Built by
+// replacing the wheel category rather than copying the array, so anything
+// added to BMW_M_CATEGORIES later reaches the Porsche too.
+const PORSCHE_CATEGORIES = BMW_M_CATEGORIES.map(
+    c => c.key === "Wheels" ? wheelCategory(PORSCHE_WHEEL_STOCK) : c
+);
 
 // The M3 export names its single exhaust "Exhaust" and its lip "Front_Lip",
 // which don't fit the slot convention. Aliasing beats re-exporting: both
@@ -363,7 +382,7 @@ const VEHICLES = {
         glb:        "/static/models/porsche_911.glb",
         // Shares the M-car slot list: same parts, and anything not present in
         // this GLB hides itself.
-        categories: BMW_M_CATEGORIES,
+        categories: PORSCHE_CATEGORIES,
         aliases:    BMW_M_ALIASES,
         // Assumed from the other Tripo exports, which all face +Z. Once it's
         // cut and has a named headlight mesh I can measure it properly.
@@ -2057,6 +2076,7 @@ function buildPartSelectorUI() {
                             data-variant="${v.name}"
                             onclick="swapPart('${cat.key}', '${v.name}')">
                             <span class="pv-label">${v.label}</span>
+                            ${v.note ? `<span class="pv-note">${v.note}</span>` : ""}
                             ${v.hp ? `<span class="pv-hp">+${v.hp} hp</span>` : ""}
                             <span class="pv-price">${
                                 // The part the car ships with reads "Included"
