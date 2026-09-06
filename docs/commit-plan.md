@@ -90,6 +90,13 @@ git commit -m "Fix share, stories, geolocation, race controls and notifications"
 
 ## After pushing
 
+Pushing is the whole job for now. **Deployment is deferred to launch** — see
+the note at the top of `DEPLOY.md`. The landing page is already live and free
+on Cloudflare Pages; paid hosting only makes sense once there are waitlist
+people to let in.
+
+When that day comes, the sequence is:
+
 1. **render.com** → sign in with GitHub → **New → Blueprint** → pick the repo.
 2. Paste the five API keys when prompted (from your local `.env`).
 3. Deploy. Note the `*.onrender.com` URL.

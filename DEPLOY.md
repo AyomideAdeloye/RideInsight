@@ -1,5 +1,19 @@
 # Deploying RideInsight
 
+> **Status: deferred until launch.** Nothing here needs doing yet.
+>
+> The landing page is already live and free on Cloudflare Pages, collecting
+> waitlist signups, and that is the only thing the public needs right now. The
+> app has no users — testing it over local wifi costs nothing and works fine.
+>
+> Hosting starts costing money the day it goes up (~$9.50/month), so the
+> trigger for working through this document is **having waitlist people to let
+> in**, not finishing a feature. Everything below is ready and doesn't expire.
+>
+> **What is still worth doing now:** push to GitHub. It's free, it's the
+> backup, and it turns deploying later into a ten-minute job.
+
+
 The app is a Flask + SQLite monolith with user uploads on disk. That works
 fine, but it means **the host must give you a persistent disk** — container
 filesystems are wiped on every deploy, and without a mounted volume you would
